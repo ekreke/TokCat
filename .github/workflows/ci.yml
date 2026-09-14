@@ -55,26 +55,35 @@ jobs:
       - name: Build shared CLI (no Apple-only deps)
         shell: bash
         run: |
-          set -o pipefail
+          set +e
           swift build --product TokCatCli 2>&1 | tee build-win.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            msg=$(grep -iE "error|cannot|undefined|not found|no such|unable" build-win.log | head -25 | tr '\n' '~')
+            echo "::error title=win-build::${msg}"
+          fi
+          exit $code
       - name: Test shared targets
         if: success()
         shell: bash
         run: |
-          set -o pipefail
+          set +e
           swift test 2>&1 | tee test-win.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            msg=$(grep -iE "error|cannot|undefined|not found|no such|unable|failed" test-win.log | head -25 | tr '\n' '~')
+            echo "::error title=win-test::${msg}"
+          fi
+          exit $code
       - name: Smoke test CLI dump
         if: success()
         shell: bash
         run: |
-          set -o pipefail
-          swift run TokCatCli dump 2>&1 | tee dump-win.log
-      - name: Surface errors (annotations)
-        if: failure()
-        shell: bash
-        run: |
           set +e
-          block="$(cat build-win.log test-win.log dump-win.log 2>/dev/null | grep -iE "error|fatal|cannot|undefined|not found|failed|Traceback|Exception" | head -40)"
-          [ -n "$block" ] || block="$(tail -n 80 build-win.log test-win.log dump-win.log 2>/dev/null)"
-          echo "::error::${block//$'\n'/%0A}"
-          exit 0
+          swift run TokCatCli dump 2>&1 | tee dump-win.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 30 dump-win.log | tr '\n' '~')
+            echo "::error title=win-dump::${msg}"
+          fi
+          exit $code
