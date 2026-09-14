@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TokCat · 菜单栏里按 token 消耗速率奔跑的猫</title>
+<link rel="icon" href="assets/cat_0.png" />
+<style>
+  :root {
+    --bg: #fffdf8;
+    --ink: #23201a;
+    --muted: #8a8074;
+    --line: #efe6d8;
+    --orange: #ff8a00;
+    --orange-2: #ffb347;
+    --peach: #fff1e0;
+    --radius: 22px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: var(--sans); color: var(--ink); background: var(--bg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+  a { color: var(--orange); text-decoration: none; }
+  .wrap { width: min(1080px, 92vw); margin: 0 auto; }
+
+  nav { display: flex; align-items: center; height: 68px; gap: 12px; }
+  nav .brand { font-weight: 800; font-size: 18px; display: flex; gap: 9px; align-items: center; }
+  nav .brand img { width: 28px; image-rendering: pixelated; }
+  nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 15px; }
+  nav .links a { color: var(--muted); font-weight: 500; }
+  nav .links a:hover { color: var(--ink); }
+
+  .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 52px 0 40px; }
+  .hero h1 { font-size: clamp(36px, 5.2vw, 60px); line-height: 1.06; margin: 0 0 18px; letter-spacing: -1px; }
+  .hero h1 em { font-style: normal; color: var(--orange); }
+  .hero p { color: var(--muted); font-size: 18px; margin: 0 0 26px; max-width: 480px; }
+  .kicker { display: inline-block; background: var(--peach); color: #b25f00; font-weight: 700; font-size: 13px; padding: 6px 14px; border-radius: 999px; margin-bottom: 18px; }
+
+  .install { display: flex; align-items: center; gap: 12px; background: #fff; border: 1.5px solid var(--line); border-radius: 14px; padding: 13px 15px; box-shadow: 0 10px 30px -18px rgba(255,138,0,.5); max-width: 560px; }
+  .install code { font-family: var(--mono); font-size: 13.5px; color: #4b443a; overflow-x: auto; white-space: nowrap; }
+  .install .p { color: var(--orange); font-weight: 700; }
+  .copy { flex: none; border: none; background: var(--orange); color: #fff; font-weight: 700; border-radius: 9px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
+  .copy.done { background: #2fb36a; }
+
+  .stage { display: grid; place-items: center; position: relative; }
+  .stage .blob { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, var(--peach), transparent 62%); border-radius: 50%; }
+  .stage img.cat { width: 150px; image-rendering: pixelated; position: relative; filter: drop-shadow(0 14px 22px rgba(255,138,0,.28)); }
+  .podium { position: relative; margin-top: -18px; width: 190px; height: 16px; border-radius: 50%; background: radial-gradient(ellipse, rgba(0,0,0,.10), transparent 70%); }
+
+  .band { background: var(--peach); border-radius: 40px; padding: 54px 6vw; margin: 30px 0; }
+  .band h2 { text-align: center; font-size: 30px; margin: 0 0 10px; }
+  .band .sub { text-align: center; color: #9a7d5a; margin: 0 0 34px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+  .card { background: #fff; border-radius: var(--radius); padding: 24px; box-shadow: 0 18px 40px -30px rgba(0,0,0,.4); }
+  .card .e { font-size: 30px; }
+  .card h3 { margin: 12px 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+  section.plain { padding: 50px 0; }
+  .sec-title { font-size: 28px; margin: 0 0 10px; text-align: center; }
+  .sec-sub { text-align: center; color: var(--muted); margin: 0 auto 34px; max-width: 620px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .chip { font-family: var(--mono); font-size: 14px; background: #fff; border: 1.5px solid var(--line); border-radius: 999px; padding: 8px 16px; color: #5b5347; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .panel { border: 1.5px solid var(--line); border-radius: var(--radius); padding: 26px; background: #fff; }
+  .panel h3 { margin: 0 0 14px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  .panel ol { margin: 0; padding-left: 20px; color: #6b6357; }
+  .panel li { margin: 8px 0; }
+  .panel code { background: #faf4ea; padding: 1px 6px; border-radius: 6px; font-family: var(--mono); font-size: 13px; }
+
+  footer { border-top: 1.5px solid var(--line); padding: 32px 0 56px; color: var(--muted); }
+  .foot { display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; align-items: center; }
+  .foot .links { display: flex; gap: 20px; }
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 16px); background: #23201a; color: #fff; padding: 10px 18px; border-radius: 12px; opacity: 0; transition: .22s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  @media (max-width: 820px) { .hero { grid-template-columns: 1fr; text-align: center; } .hero p { margin-left: auto; margin-right: auto; } .install { margin: 0 auto; } .split { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="brand"><img src="assets/cat_0.png" alt="" />TokCat</div>
+    <div class="links">
+      <a href="#why">亮点</a>
+      <a href="#install">安装</a>
+      <a href="#hermes">Hermes</a>
+      <a href="https://github.com/ekreke/TokCat">GitHub ↗</a>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div>
+      <span class="kicker">🐾 macOS 菜单栏 · 开源</span>
+      <h1>你家菜单栏，<br />该住一只<em>跑得飞快</em>的猫了。</h1>
+      <p>TokCat 跟着 AI agent 的 token 消耗速率跑动：烧得越猛，跑得越欢。左键聊天，右键看趋势。</p>
+      <div class="install">
+        <code><span class="p">$</span> brew tap ekreke/tokcat https://github.com/ekreke/TokCat &amp;&amp; brew install --cask tokcat</code>
+        <button class="copy" data-copy="brew tap ekreke/tokcat https://github.com/ekreke/TokCat && brew install --cask tokcat">复制</button>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="blob"></div>
+      <img class="cat" id="cat" src="assets/cat_0.png" alt="TokCat 猫" />
+      <div class="podium"></div>
+    </div>
+  </div>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <h2 id="why">一只猫，干四件事</h2>
+    <p class="sub">简单、直接、随时看得见你的消耗。</p>
+    <div class="cards">
+      <div class="card"><div class="e">🏃</div><h3>速率动画</h3><p>token/s 越高跑越快，空闲 2fps 散步。内置 RunCat 精灵图，也支持自定义动画包。</p></div>
+      <div class="card"><div class="e">💬</div><h3>左键 Chat</h3><p>常驻 Hermes 会话，流式回答、多轮追问、Markdown + 代码高亮。</p></div>
+      <div class="card"><div class="e">📊</div><h3>右键趋势</h3><p>菜单里内嵌最近 5 分钟折线，总量与峰值一目了然。</p></div>
+      <div class="card"><div class="e">🔌</div><h3>多源采集</h3><p>opencode、Claude Code、Codex、pi，以及可选的 cc-switch 聚合库。</p></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <section class="plain">
+    <h2 class="sec-title">它听得懂这些工具</h2>
+    <p class="sec-sub">从本地数据里算出你的真实 token 消耗速率。</p>
+    <div class="chips">
+      <span class="chip">opencode</span>
+      <span class="chip">Claude Code</span>
+      <span class="chip">Codex</span>
+      <span class="chip">pi</span>
+      <span class="chip">cc-switch</span>
+    </div>
+  </section>
+
+  <section class="plain" id="install">
+    <h2 class="sec-title">两步安装</h2>
+    <p class="sec-sub">需要 macOS 13+，仅支持 Apple Silicon (arm64)。</p>
+    <div class="chips" style="flex-direction:column; align-items:stretch; max-width:640px; margin:0 auto;">
+      <div class="install" style="max-width:none">
+        <code><span class="p">$</span> brew tap ekreke/tokcat https://github.com/ekreke/TokCat</code>
+        <button class="copy" data-copy="brew tap ekreke/tokcat https://github.com/ekreke/TokCat">复制</button>
+      </div>
+      <div class="install" style="max-width:none">
+        <code><span class="p">$</span> brew install --cask tokcat</code>
+        <button class="copy" data-copy="brew install --cask tokcat">复制</button>
+      </div>
+    </div>
+    <p style="text-align:center; color:var(--muted); font-size:14px; margin-top:18px">ad-hoc 签名（未公证）。被拦时右键 App「打开」，或到「系统设置 → 隐私与安全性 → 仍要打开」。</p>
+  </section>
+
+  <section class="plain" id="hermes">
+    <h2 class="sec-title">接入 Hermes</h2>
+    <p class="sec-sub">ACP Client 目前只接 Hermes，本地或远程 SSH 都行。</p>
+    <div class="split">
+      <div class="panel">
+        <h3>💻 本机</h3>
+        <ol>
+          <li>右键猫图标 →「Hermes → 设置…」</li>
+          <li>点「一键安装」执行官方脚本</li>
+          <li>点「登录」跑 <code>hermes acp --setup</code></li>
+        </ol>
+      </div>
+      <div class="panel">
+        <h3>🛰️ 远程 SSH</h3>
+        <ol>
+          <li>填 SSH 目标（别名或 <code>user@host</code>）</li>
+          <li>必要时填私钥、登录 shell 包装</li>
+          <li>点「测试连接」验证后保存</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <div>TokCat · 灵感来自 RunCat365 · Apache-2.0</div>
+    <div class="links">
+      <a href="https://github.com/ekreke/TokCat">GitHub</a>
+      <a href="https://github.com/ekreke/TokCat#readme">文档</a>
+      <a href="https://github.com/ekreke/TokCat/issues">反馈</a>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast">已复制到剪贴板</div>
+<script>
+(function(){var n=5,i=0,img=document.getElementById('cat');setInterval(function(){i=(i+1)%n;img.src='assets/cat_'+i+'.png';},100);})();
+(function(){var t=document.getElementById('toast');document.querySelectorAll('.copy').forEach(function(b){b.addEventListener('click',function(){var s=b.getAttribute('data-copy');function ok(){b.classList.add('done');b.textContent='已复制';t.classList.add('show');setTimeout(function(){b.classList.remove('done');b.textContent='复制';t.classList.remove('show');},1400);}if(navigator.clipboard){navigator.clipboard.writeText(s).then(ok,function(){fb(s,ok);});}else{fb(s,ok);}});});function fb(s,cb){var a=document.createElement('textarea');a.value=s;a.style.position='fixed';a.style.opacity=0;document.body.appendChild(a);a.select();try{document.execCommand('copy');cb();}catch(e){}document.body.removeChild(a);}})();
+</script>
+</body>
+</html>
