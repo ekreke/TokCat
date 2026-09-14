@@ -1,5 +1,5 @@
 import XCTest
-import CSQLite
+import SQLite3
 import TokCatCore
 @testable import TokCatSources
 
