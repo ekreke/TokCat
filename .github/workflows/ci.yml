@@ -48,11 +48,27 @@ jobs:
         with:
           swift-version: swift-6.1-release
           swift-build: 6.1-RELEASE
+          update-sdk-modules: true
       - name: Swift version
         run: swift --version
       - name: Build shared CLI (no Apple-only deps)
-        run: swift build --product TokCatCli
+        shell: bash
+        run: |
+          set -o pipefail
+          swift build --product TokCatCli 2>&1 | tee build-win.log
       - name: Test shared targets
-        run: swift test
+        if: success()
+        shell: bash
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee test-win.log
+      - name: Surface errors (annotations)
+        if: failure()
+        shell: bash
+        run: |
+          block="$(grep -nhE "error:|fatal error|cannot find|undefined|not found|failed" build-win.log test-win.log 2>/dev/null | head -40)"
+          [ -n "$block" ] || block="$(tail -n 50 build-win.log test-win.log 2>/dev/null)"
+          echo "::error::${block//$'\n'/%0A}"
       - name: Smoke test CLI dump
+        if: success()
         run: swift run TokCatCli dump
