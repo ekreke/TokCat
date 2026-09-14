@@ -87,3 +87,14 @@ jobs:
             echo "::error title=win-dump::${msg}"
           fi
           exit $code
+      - name: Setup .NET
+        if: success()
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows app (C#)
+        if: success()
+        shell: pwsh
+        run: |
+          dotnet build windows/TokCat.Windows/TokCat.Windows.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-app-build::C# build failed"; exit $LASTEXITCODE }
