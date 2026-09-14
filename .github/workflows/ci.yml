@@ -26,6 +26,7 @@ jobs:
       - name: Surface build errors (annotations)
         if: failure()
         run: |
+          set +e
           block="$(grep -nE "error:" build-macos.log | head -40)"
           [ -n "$block" ] || block="$(tail -n 40 build-macos.log)"
           echo "::error::${block//$'\n'/%0A}"
@@ -72,6 +73,8 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          block="$(grep -nhE "error:|fatal error|cannot find|undefined|not found|failed|Traceback|Exception" build-win.log test-win.log dump-win.log 2>/dev/null | head -40)"
-          [ -n "$block" ] || block="$(tail -n 60 build-win.log test-win.log dump-win.log 2>/dev/null)"
+          set +e
+          block="$(cat build-win.log test-win.log dump-win.log 2>/dev/null | grep -iE "error|fatal|cannot|undefined|not found|failed|Traceback|Exception" | head -40)"
+          [ -n "$block" ] || block="$(tail -n 80 build-win.log test-win.log dump-win.log 2>/dev/null)"
           echo "::error::${block//$'\n'/%0A}"
+          exit 0
