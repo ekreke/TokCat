@@ -18,7 +18,15 @@ jobs:
       - name: Swift version
         run: swift --version
       - name: Build all
-        run: swift build
+        run: |
+          set -o pipefail
+          swift build 2>&1 | tee build-macos.log
+      - name: Surface build errors (annotations)
+        if: failure()
+        run: |
+          tail -n 80 build-macos.log | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
       - name: Test
         run: swift test
 
