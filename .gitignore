@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+build/
+*.xcodeproj
+*.xcworkspace
+TokCat.app/
