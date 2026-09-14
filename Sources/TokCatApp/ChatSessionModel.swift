@@ -84,10 +84,12 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
 
         let client = ACPClient(configuration: configuration)
         client.onEvent = { [weak self] event in
-            Task { @MainActor in self?.handle(event) }
+            guard let self else { return }
+            Task { @MainActor in self.handle(event) }
         }
         client.onExit = { [weak self] code in
-            Task { @MainActor in self?.handleExit(code) }
+            guard let self else { return }
+            Task { @MainActor in self.handleExit(code) }
         }
         client.permissionHandler = { [weak self] params in
             guard let self else { return .cancelled }

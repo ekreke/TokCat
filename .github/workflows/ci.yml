@@ -15,8 +15,10 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - name: Swift version
-        run: swift --version
+      - name: Toolchain info
+        run: |
+          swift --version
+          xcodebuild -version || true
       - name: Build all
         run: |
           set -o pipefail
@@ -24,9 +26,15 @@ jobs:
       - name: Surface build errors (annotations)
         if: failure()
         run: |
-          tail -n 80 build-macos.log | while IFS= read -r line; do
-            echo "::error::${line}"
-          done
+          block="$(grep -nE "error:" build-macos.log | head -40)"
+          [ -n "$block" ] || block="$(tail -n 40 build-macos.log)"
+          echo "::error::${block//$'\n'/%0A}"
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-log
+          path: build-macos.log
       - name: Test
         run: swift test
 
