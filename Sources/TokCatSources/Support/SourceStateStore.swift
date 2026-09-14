@@ -1,11 +1,10 @@
 import Foundation
+import TokCatCore
 
 /// 采集游标持久化：记录每个源、每个文件已消费的字节偏移。
 public final class SourceStateStore {
     public static var defaultURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("TokCat/state.json", isDirectory: false)
+        PlatformPaths.tokCatSupport.appendingPathComponent("state.json", isDirectory: false)
     }
 
     private let url: URL

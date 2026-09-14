@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import XCTest
 import AppKit
 @testable import TokCatCore
@@ -53,3 +54,4 @@ final class AnimationRegistryTests: XCTestCase {
         XCTAssertEqual(registry.loadExternalPacks(from: root), 0)
     }
 }
+#endif

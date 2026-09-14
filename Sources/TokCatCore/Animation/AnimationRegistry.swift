@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 /// 动画包注册表：内置包 + 外部目录动态加载。
@@ -11,9 +12,7 @@ public final class AnimationRegistry {
 
     /// 默认的外部动画包目录：`~/Library/Application Support/TokCat/Animations`
     public static var defaultExternalDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("TokCat/Animations", isDirectory: true)
+        PlatformPaths.animationsDirectory
     }
 
     public func register(_ pack: AnimationPack) {
@@ -62,3 +61,4 @@ public final class AnimationRegistry {
         return count
     }
 }
+#endif

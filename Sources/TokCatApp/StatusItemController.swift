@@ -273,12 +273,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// 后台刷新本地 hermes 检测结果，菜单读取缓存避免触发 shell。
     private func refreshHermesStatusInBackground() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
             let path: String?
             switch AgentDetector.localStatus() {
             case let .ready(value): path = value
             case .missing: path = nil
             }
-            DispatchQueue.main.async { self?.localHermesPath = path }
+            DispatchQueue.main.async { self.localHermesPath = path }
         }
     }
 

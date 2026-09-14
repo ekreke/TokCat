@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 import XCTest
 @testable import TokCatAgent
 
@@ -138,3 +139,4 @@ final class ACPClientIntegrationTests: XCTestCase {
         XCTAssertThrowsError(try client.launch())
     }
 }
+#endif

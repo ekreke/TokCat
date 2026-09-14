@@ -41,6 +41,7 @@ final class HermesSettingsModel: ObservableObject, @unchecked Sendable {
     /// 后台检测本地 hermes。
     func refreshLocal() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
             ShellEnvironment.invalidateCache()
             let status = AgentDetector.localStatus()
             let path: String?
@@ -48,7 +49,7 @@ final class HermesSettingsModel: ObservableObject, @unchecked Sendable {
             case let .ready(value): path = value
             case .missing: path = nil
             }
-            DispatchQueue.main.async { self?.localPath = path }
+            DispatchQueue.main.async { self.localPath = path }
         }
     }
 
@@ -114,10 +115,11 @@ final class HermesSettingsModel: ObservableObject, @unchecked Sendable {
         busy = true
         log += "\n$ \(command)\n"
         ShellRunner.run(command, environment: ShellEnvironment.childEnvironment()) { [weak self] text in
-            DispatchQueue.main.async { self?.log += text }
+            guard let self else { return }
+            DispatchQueue.main.async { self.log += text }
         } onFinish: { [weak self] code in
+            guard let self else { return }
             DispatchQueue.main.async {
-                guard let self else { return }
                 self.busy = false
                 self.log += "\n[\(label) 退出码 \(code)]\n"
                 self.refreshLocal()

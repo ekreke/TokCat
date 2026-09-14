@@ -43,6 +43,11 @@
   .copy { flex: none; border: none; background: var(--orange); color: #fff; font-weight: 700; border-radius: 9px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
   .copy.done { background: #2fb36a; }
 
+  .dl { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; background: var(--orange); color: #fff; font-weight: 700; border-radius: 10px; padding: 10px 16px; font-size: 14px; box-shadow: 0 10px 30px -16px rgba(255,138,0,.85); }
+  .dl:hover { background: #ef7f00; }
+  .dl.ghost { background: #fff; color: var(--ink); border: 1.5px solid var(--line); box-shadow: none; font-weight: 600; }
+  .dl.ghost:hover { border-color: var(--orange-2); color: var(--orange); }
+
   .stage { display: grid; place-items: center; position: relative; }
   .stage .blob { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, var(--peach), transparent 62%); border-radius: 50%; }
   .stage img.cat { width: 150px; image-rendering: pixelated; position: relative; filter: drop-shadow(0 14px 22px rgba(255,138,0,.28)); }
@@ -86,6 +91,7 @@
     <div class="links">
       <a href="#why">亮点</a>
       <a href="#install">安装</a>
+      <a href="#windows">Windows</a>
       <a href="#hermes">Hermes</a>
       <a href="https://github.com/ekreke/TokCat">GitHub ↗</a>
     </div>
@@ -93,12 +99,16 @@
 
   <div class="hero">
     <div>
-      <span class="kicker">🐾 macOS 菜单栏 · 开源</span>
+      <span class="kicker">🐾 macOS 菜单栏 / Windows 托盘 · 开源</span>
       <h1>你家菜单栏，<br />该住一只<em>跑得飞快</em>的猫了。</h1>
       <p>TokCat 跟着 AI agent 的 token 消耗速率跑动：烧得越猛，跑得越欢。左键聊天，右键看趋势。</p>
       <div class="install">
         <code><span class="p">$</span> brew tap ekreke/tokcat https://github.com/ekreke/TokCat &amp;&amp; brew install --cask tokcat</code>
         <button class="copy" data-copy="brew tap ekreke/tokcat https://github.com/ekreke/TokCat && brew install --cask tokcat">复制</button>
+      </div>
+      <div style="margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
+        <a class="dl" href="https://github.com/ekreke/TokCat/releases/latest">⬇ Windows 版（.msix）</a>
+        <a class="dl ghost" href="https://github.com/ekreke/TokCat/releases/latest">查看全部下载</a>
       </div>
     </div>
     <div class="stage">
@@ -136,19 +146,32 @@
   </section>
 
   <section class="plain" id="install">
-    <h2 class="sec-title">两步安装</h2>
-    <p class="sec-sub">需要 macOS 13+，仅支持 Apple Silicon (arm64)。</p>
-    <div class="chips" style="flex-direction:column; align-items:stretch; max-width:640px; margin:0 auto;">
-      <div class="install" style="max-width:none">
-        <code><span class="p">$</span> brew tap ekreke/tokcat https://github.com/ekreke/TokCat</code>
-        <button class="copy" data-copy="brew tap ekreke/tokcat https://github.com/ekreke/TokCat">复制</button>
+    <h2 class="sec-title">安装</h2>
+    <p class="sec-sub">macOS 13+（Apple Silicon）或 Windows 10 19041+ / Windows 11（x64）。</p>
+    <div class="split">
+      <div class="panel">
+        <h3>🍎 macOS</h3>
+        <div class="install" style="max-width:none; box-shadow:none">
+          <code><span class="p">$</span> brew tap ekreke/tokcat https://github.com/ekreke/TokCat</code>
+          <button class="copy" data-copy="brew tap ekreke/tokcat https://github.com/ekreke/TokCat">复制</button>
+        </div>
+        <div class="install" style="max-width:none; box-shadow:none; margin-top:10px">
+          <code><span class="p">$</span> brew install --cask tokcat</code>
+          <button class="copy" data-copy="brew install --cask tokcat">复制</button>
+        </div>
+        <p style="color:var(--muted); font-size:13px; margin:14px 0 0">ad-hoc 签名（未公证）。被拦时右键 App「打开」，或到「系统设置 → 隐私与安全性 → 仍要打开」。</p>
       </div>
-      <div class="install" style="max-width:none">
-        <code><span class="p">$</span> brew install --cask tokcat</code>
-        <button class="copy" data-copy="brew install --cask tokcat">复制</button>
+      <div class="panel" id="windows">
+        <h3>🪟 Windows</h3>
+        <ol>
+          <li>从 Releases 下载最新 <code>TokCat-&lt;版本&gt;.msix</code></li>
+          <li>双击安装；若 SmartScreen 拦截，点「更多信息 → 仍要运行」</li>
+          <li>安装后系统托盘出现小猫，随 token 速率奔跑</li>
+        </ol>
+        <a class="dl" href="https://github.com/ekreke/TokCat/releases/latest">⬇ 下载 Windows 版（.msix）</a>
+        <p style="color:var(--muted); font-size:13px; margin:12px 0 0">本地 Hermes 走 WSL，远程走 SSH；opencode 采集支持原生 Windows。左键 Chat，右键菜单看趋势。</p>
       </div>
     </div>
-    <p style="text-align:center; color:var(--muted); font-size:14px; margin-top:18px">ad-hoc 签名（未公证）。被拦时右键 App「打开」，或到「系统设置 → 隐私与安全性 → 仍要打开」。</p>
   </section>
 
   <section class="plain" id="hermes">

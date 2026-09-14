@@ -82,6 +82,7 @@ final class ChatPopoverController: NSObject, NSPopoverDelegate {
         let localCWD = settings.agentWorkingDirectory
         let remote = settings.remoteSSHConfig
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
             let configuration: ACPLaunchConfiguration?
             let displayName: String
             switch mode {
@@ -93,7 +94,6 @@ final class ChatPopoverController: NSObject, NSPopoverDelegate {
                 displayName = "Hermes · \(remote.target)"
             }
             DispatchQueue.main.async {
-                guard let self else { return }
                 if let configuration {
                     self.model.ensureSession(configuration: configuration, displayName: displayName)
                 } else {

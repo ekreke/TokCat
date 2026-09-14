@@ -1,5 +1,16 @@
 import Foundation
 
+/// 动画的时序属性（帧率相关），不依赖任何 UI 框架，故可跨平台。
+///
+/// `AnimationPack`（macOS，含 `NSImage` 渲染）在 AppKit 可用时细化本协议；
+/// `AnimationSpeedMapper` 只依赖本协议，因此速率→帧率的映射在 Windows 上也可用/可测。
+public protocol AnimationTiming {
+    /// 静止（速率为 0）时的帧率。
+    var idleFPS: Double { get }
+    /// 该动画推荐的最高帧率（实际以上限设置为准）。
+    var maxFPS: Double { get }
+}
+
 /// 把 token 消耗速率映射为动画帧率。
 ///
 /// 对齐 RunCat 的线性模型：`速度 = max(1, 负载比例 × 最大速率)`，
@@ -30,12 +41,12 @@ public struct AnimationSpeedMapper: Equatable, Sendable {
     }
 
     /// 使用当前设置的最高帧率上限，空闲帧率取动画包自身定义。
-    public func fps(rate: Double, pack: AnimationPack) -> Double {
+    public func fps(rate: Double, pack: AnimationTiming) -> Double {
         fps(rate: rate, idleFPS: min(pack.idleFPS, maxFPS), maxFPS: maxFPS)
     }
 
     /// 帧间隔（秒）。速率越高间隔越小。
-    public func frameInterval(rate: Double, pack: AnimationPack) -> TimeInterval {
+    public func frameInterval(rate: Double, pack: AnimationTiming) -> TimeInterval {
         let f = fps(rate: rate, pack: pack)
         guard f > 0 else { return 1 }
         return 1.0 / f

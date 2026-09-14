@@ -20,18 +20,24 @@ final class AnimationSpeedMapperTests: XCTestCase {
     }
 
     func testFPSStaysWithinPackBounds() {
-        let pack = TestAnimationPack()
+        let pack = TestAnimationTiming()
         let mapper = AnimationSpeedMapper()
         XCTAssertEqual(mapper.fps(rate: 0, pack: pack), pack.idleFPS, accuracy: 0.0001)
         XCTAssertEqual(mapper.fps(rate: 1_000_000, pack: pack), pack.maxFPS, accuracy: 0.0001)
     }
 
     func testHigherRateMeansShorterInterval() {
-        let pack = TestAnimationPack()
+        let pack = TestAnimationTiming()
         let mapper = AnimationSpeedMapper()
         let slow = mapper.frameInterval(rate: 10, pack: pack)
         let fast = mapper.frameInterval(rate: 5_000, pack: pack)
         XCTAssertLessThan(fast, slow)
         XCTAssertGreaterThan(fast, 0)
     }
+}
+
+/// 跨平台的最小 `AnimationTiming` 实现（不涉及 AppKit，Windows 也能用）。
+struct TestAnimationTiming: AnimationTiming {
+    var idleFPS: Double = 2
+    var maxFPS: Double = 24
 }

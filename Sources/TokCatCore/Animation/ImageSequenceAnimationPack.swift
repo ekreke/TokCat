@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 /// 由图片序列构成的外部动画包。
@@ -70,3 +71,4 @@ public final class ImageSequenceAnimationPack: AnimationPack {
         return scaled
     }
 }
+#endif

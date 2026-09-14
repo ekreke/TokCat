@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 @testable import TokCatCore
 
@@ -30,3 +31,4 @@ final class TestAnimationPack: AnimationPack {
         NSImage(size: NSSize(width: height, height: height))
     }
 }
+#endif
