@@ -1,5 +1,6 @@
 import Foundation
 import TokCatCore
+import TokCatEngine
 
 /// 注册随 App 打包的内置动画包（`Sources/TokCatApp/Resources/`）。
 ///

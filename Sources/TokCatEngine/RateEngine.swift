@@ -2,27 +2,49 @@ import Foundation
 import TokCatCore
 import TokCatSources
 
-/// 一次采样后的快照，供 UI 展示。
-struct RateSnapshot {
-    let rate: Double
-    let totalUnits: Double
-    let totalUsage: TokenUsage
-    let unitIsCurrency: Bool
-    let eventCounts: [String: Int]
-    let trend: RateHistory.RateTrend
+/// 一次采样后的快照，供 UI 展示（macOS 菜单栏 / Windows 托盘 / CLI 协议）。
+public struct RateSnapshot {
+    public let rate: Double
+    public let totalUnits: Double
+    public let totalUsage: TokenUsage
+    public let unitIsCurrency: Bool
+    public let eventCounts: [String: Int]
+    public let trend: RateHistory.RateTrend
     /// 来源 id → 展示名称。
-    let sourceNames: [String: String]
+    public let sourceNames: [String: String]
     /// 趋势窗口（秒）。
-    let windowSeconds: Int
+    public let windowSeconds: Int
+
+    public init(
+        rate: Double,
+        totalUnits: Double,
+        totalUsage: TokenUsage,
+        unitIsCurrency: Bool,
+        eventCounts: [String: Int],
+        trend: RateHistory.RateTrend,
+        sourceNames: [String: String],
+        windowSeconds: Int
+    ) {
+        self.rate = rate
+        self.totalUnits = totalUnits
+        self.totalUsage = totalUsage
+        self.unitIsCurrency = unitIsCurrency
+        self.eventCounts = eventCounts
+        self.trend = trend
+        self.sourceNames = sourceNames
+        self.windowSeconds = windowSeconds
+    }
 }
 
 /// 速率引擎：周期性轮询各采集源，聚合样本、计算速率并记录历史。
 ///
 /// 采集与解析是重活（目录遍历、文件读取、SQLite 查询、JSON 解析），
 /// 全部在后台串行队列执行，避免阻塞主线程导致动画卡顿；结果再回主线程。
-final class RateEngine {
+///
+/// 该类型位于共享层，macOS 外壳与跨平台 CLI 复用同一实现。
+public final class RateEngine {
     /// 主线程回调。
-    var onUpdate: ((RateSnapshot) -> Void)?
+    public var onUpdate: ((RateSnapshot) -> Void)?
 
     private let sources: [TokenSource]
     private let aggregator: RateAggregator
@@ -35,19 +57,19 @@ final class RateEngine {
     private let aggregateSeconds = 1
     private let sourceNames: [String: String]
 
-    init(sources: [TokenSource],
-         converter: TokenUnitConverter,
-         window: TimeInterval = 15,
-         stateStore: SourceStateStore? = nil) {
+    public init(sources: [TokenSource],
+                converter: TokenUnitConverter,
+                window: TimeInterval = 15,
+                stateStore: SourceStateStore? = nil) {
         self.sources = sources
         self.aggregator = RateAggregator(converter: converter, window: window)
         self.stateStore = stateStore
         self.sourceNames = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.displayName) })
     }
 
-    var allSources: [TokenSource] { sources }
+    public var allSources: [TokenSource] { sources }
 
-    func start() {
+    public func start() {
         stop()
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 1, repeating: 1.0, leeway: .milliseconds(100))
@@ -58,19 +80,19 @@ final class RateEngine {
         self.timer = timer
     }
 
-    func stop() {
+    public func stop() {
         timer?.cancel()
         timer = nil
     }
 
-    func updateConverter(_ converter: TokenUnitConverter) {
+    public func updateConverter(_ converter: TokenUnitConverter) {
         queue.async { [weak self] in
             self?.aggregator.converter = converter
             self?.history.reset()
         }
     }
 
-    func resetTotals() {
+    public func resetTotals() {
         queue.async { [weak self] in
             self?.aggregator.reset()
             self?.history.reset()

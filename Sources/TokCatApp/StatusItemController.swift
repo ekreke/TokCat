@@ -3,6 +3,7 @@ import SwiftUI
 import TokCatCore
 import TokCatSources
 import TokCatAgent
+import TokCatEngine
 
 /// 状态栏控制器：负责动画渲染与下拉菜单交互。
 final class StatusItemController: NSObject, NSMenuDelegate {

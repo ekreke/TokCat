@@ -1,6 +1,7 @@
 import AppKit
 import TokCatCore
 import TokCatSources
+import TokCatEngine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: StatusItemController?
