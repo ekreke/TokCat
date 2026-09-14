@@ -52,16 +52,6 @@ jobs:
           update-sdk-modules: true
       - name: Swift version
         run: swift --version
-      - name: Diagnose winsqlite3 availability
-        shell: bash
-        run: |
-          set +e
-          hits=$( { echo "WindowsSdkDir=${WindowsSdkDir:-unset}"; \
-                   ls "/c/Windows/System32/winsqlite3.dll" 2>/dev/null; \
-                   find "/c/Program Files (x86)/Windows Kits/10/Include" -iname "winsqlite3.h" 2>/dev/null; \
-                   find "/c/Program Files (x86)/Windows Kits/10/Lib" -iname "winsqlite3.lib" 2>/dev/null; } | tr '\n' '~')
-          echo "::notice title=winsqlite3-hits::${hits}"
-          exit 0
       - name: Build shared CLI (no Apple-only deps)
         shell: bash
         run: |
