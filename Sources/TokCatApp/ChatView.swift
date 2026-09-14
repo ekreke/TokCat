@@ -1,12 +1,16 @@
+import AppKit
 import SwiftUI
 import TokCatAgent
 
-/// Chat 弹窗：输入 + 流式回答（只显示最新回答）。
+/// Chat 弹窗：输入 + 流式回答（只显示最新回答，Markdown 渲染）。
 struct ChatView: View {
     @ObservedObject var model: ChatSessionModel
     /// 未安装 agent 时点击“安装 / 设置”。
     var onSetup: (() -> Void)?
+    /// 右下角拖拽手柄的尺寸增量回调（由控制器换算成弹窗尺寸）。
+    var onResize: ((CGSize) -> Void)?
     @FocusState private var inputFocused: Bool
+    @State private var lastDrag: CGSize = .zero
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -19,7 +23,8 @@ struct ChatView: View {
             inputBar
         }
         .padding(14)
-        .frame(width: 380)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .bottomTrailing) { resizeHandle }
         .onAppear { inputFocused = true }
     }
 
@@ -48,15 +53,13 @@ struct ChatView: View {
                         .font(.callout)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
-                } else if model.answer.isEmpty {
+                } else if model.answer.isEmpty, model.displayAnswer.isEmpty {
                     Text(model.activity.isEmpty ? "问点什么吧。" : model.activity)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text(model.answer)
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    ChatMarkdownView(markdown: model.displayAnswer)
+                        .font(.system(size: 12.5))
                 }
                 if !model.answer.isEmpty, !model.activity.isEmpty {
                     Text(model.activity)
@@ -66,7 +69,35 @@ struct ChatView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 220)
+        .frame(maxHeight: .infinity)
+    }
+
+    /// 右下角拖拽手柄：调整弹窗尺寸。
+    private var resizeHandle: some View {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .padding(5)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside {
+                    NSCursor.crosshair.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        guard let onResize else { return }
+                        let dx = value.translation.width - lastDrag.width
+                        let dy = value.translation.height - lastDrag.height
+                        lastDrag = value.translation
+                        onResize(CGSize(width: dx, height: dy))
+                    }
+                    .onEnded { _ in lastDrag = .zero }
+            )
+            .help("拖动调整窗口大小")
     }
 
     private func permissionBar(_ permission: ChatSessionModel.PendingPermission) -> some View {

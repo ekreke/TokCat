@@ -15,28 +15,36 @@
 make run        # 开发模式直接运行（swift run，菜单栏出现猫）
 make test       # 运行单元测试
 make app        # 打包为 build/TokCat.app（无 Dock 图标，ad-hoc 签名）
-make dump       # 一次性扫描所有采集源并打印统计（验证/排障）
+make dump        # 一次性扫描所有采集源并打印统计（验证/排障）
+make highlightcheck  # 验证 Highlight.js 资源可加载（主题/语言/示例高亮）
 ```
+
+> 依赖：MarkdownUI、HighlighterSwift（含 NetworkImage / swift-cmark），首次 `swift build` 会联网解析并生成 `Package.resolved`；打包时资源包会自动拷入 `.app`。
 
 ## Chat（左键）
 
 - 通过 **ACP** 与本地 agent 通信：`initialize` → `session/new` → `session/prompt`，流式接收 `session/update`（正文 / 思考 / 工具 / 计划）。
-- **单次会话**：打开弹窗即启动一个会话，关闭弹窗即结束进程；弹窗内可多轮追问，**只显示最新回答**。
+- **常驻会话**：首次打开才连接（首次约 1–2s，之后秒开），关闭弹窗**不结束**会话，重开继续上次对话；空闲 1 小时才回收进程。
+- 弹窗内可多轮追问，**只显示最新回答**；换 Agent / 改目录 / 菜单「断开 Agent」会重连。
 - 危险命令会弹出**授权条**（允许一次 / 允许会话 / 拒绝），对应 ACP 的 `session/request_permission`。
 - 未安装 agent 时展示失败提示，点「设置」进入「Agent 检测 / 一键安装」窗口。
+- 回答以 **Markdown 渲染**（[MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui)）：标题 / 列表 / 引用 / 表格 / 链接 / 代码块；代码块用 [Highlight.js](https://highlightjs.org)（HighlighterSwift）做**语法高亮**（约 192 种语言，浅/深色自动切主题）。
+- 流式期间按 **150ms 节流**重解析 Markdown，并把高亮结果按「语言 + 源码」缓存，避免逐 token 卡顿。
+- 弹窗尺寸可用右下角**拖拽手柄**调整，并记住上次大小（340×360 ~ 900×900）。
 
 ## 趋势图（右键菜单顶部）
 
-- **每个客户端一条彩色折线**（opencode 蓝 / claude 橙 / codex 紫 / pi 青 / cc-switch 粉 / 模拟 灰，其它按 id 派生色），底部图例显示各客户端在所选范围内的小计。
-- 时间范围通过菜单项「趋势范围」切换：**1 / 5 / 10 分钟**（记住上次选择）。
+- **每个客户端一条彩色折线**（opencode 蓝 / claude 橙 / codex 紫 / pi 青 / cc-switch 粉 / 模拟 灰，其它按 id 派生色），底部图例显示各客户端小计。
+- 固定展示**最近 5 分钟**；顶部一行统计：**当前速率 / 合计 / 峰值**。
+- 打开菜单时取一次**快照渲染**并冻结 Y 轴上限，菜单打开期间不重绘，避免折线抖动。
 - 单位缩写用 `t`（如 `1.23K t/s`、`1.23K t`）；金额口径为 `$/s`、`$`。
 - 数据按秒记录（窗口 600s）；图表按范围降采样（≤~120 点/条）保证流畅，统计仍按 1 秒。
 - 随全局「速率口径」设置变化（加权 / 全部 / 仅 input+output / 金额）。
 
 ## 菜单（右键）
 
-- **趋势图 + 趋势范围**：顶部内嵌最近消耗折线。
-- **Agent**：选择预设（Hermes / OpenCode / Gemini CLI / 自定义命令），或打开「安装 / 重新检测…」。
+- **趋势图**：顶部内嵌最近 5 分钟消耗折线 + 速率/合计/峰值。
+- **Agent**：选择预设（Hermes / OpenCode / Gemini CLI / 自定义命令），「安装 / 重新检测…」，「断开 Agent」。
 - **动画**：选择动画包；子菜单底部含「重新扫描动画目录」「打开动画目录」。
 - **速率口径**：加权 token / 全部 token / 仅 input+output / 金额（USD，models.dev 定价）。
 - **尺寸**：16 / 18 / 20 / 22 / 24 pt。
@@ -73,6 +81,7 @@ Sources/
     ├─ AppDelegate, StatusItemController（状态栏 + 动画循环 + 左/右键交互）
     ├─ RateEngine（后台轮询聚合）, Settings, Formatting, LoginItem
     ├─ ChatSessionModel / ChatPopoverController / ChatView（左键 Chat）
+    ├─ ChatMarkdownView（MarkdownUI + Highlight.js 渲染，尺寸拖拽）
     ├─ TrendView（右键菜单顶部内嵌的 Swift Charts 趋势图）
     ├─ AgentSetupModel / AgentSetupView / AgentSetupController（检测 + 一键安装）
     ├─ BundledAnimations（加载打包素材）, DumpCommand

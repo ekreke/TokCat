@@ -5,6 +5,11 @@ if CommandLine.arguments.contains("dump") {
     exit(0)
 }
 
+if CommandLine.arguments.contains("highlightcheck") {
+    HighlightCheck.run()
+    exit(0)
+}
+
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

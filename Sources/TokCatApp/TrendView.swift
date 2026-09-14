@@ -9,13 +9,11 @@ struct TrendPoint: Identifiable, Equatable {
     var id: Date { date }
 }
 
-/// 趋势弹窗的视图模型，由 `RateEngine` 的主线程快照驱动。
-final class TrendModel: ObservableObject {
-    /// 可选的时间范围（分钟）。
-    static let rangeOptions = [1, 5, 10]
-
-    /// 每个客户端的序列（含范围内小计，用于图例）。
-    struct Series: Identifiable {
+/// 菜单内嵌图表的一份**不可变快照**。
+///
+/// 打开菜单时生成一次，菜单打开期间不再实时重绘，避免每秒重算坐标域导致的抖动。
+struct TrendChartData: Equatable {
+    struct Series: Identifiable, Equatable {
         let id: String
         let name: String
         let color: Color
@@ -23,30 +21,40 @@ final class TrendModel: ObservableObject {
         let subtotal: Double
     }
 
-    @Published var series: [Series] = []
-    @Published var rate: Double = 0
-    @Published var total: Double = 0
-    @Published var peak: Double = 0
-    @Published var currency: Bool = false
-    @Published var metricName: String = ""
+    var series: [Series] = []
+    var rate: Double = 0
+    var total: Double = 0
+    var peak: Double = 0
+    var currency: Bool = false
+    var metricName: String = ""
+    /// 冻结的 Y 轴上限（“好看”的整数刻度）。
+    var yMax: Double = 1
 
-    /// 当前筛选的时间范围（分钟）。
-    @Published var rangeMinutes: Int = 5 {
-        didSet {
-            guard rangeMinutes != oldValue else { return }
-            onRangeChange?(rangeMinutes)
-            recompute()
-        }
-    }
+    static let empty = TrendChartData()
 
-    /// 范围变化回调，用于持久化。
-    var onRangeChange: ((Int) -> Void)?
+    /// 固定的趋势范围（分钟）。
+    static let rangeMinutes = 5
+}
 
+/// 把 `RateEngine` 快照转成图表数据的视图模型。
+///
+/// 不做实时发布：菜单打开时调用 `chartData()` 取一次快照即可。
+final class TrendModel {
     private var trend: RateHistory.RateTrend?
     private var sourceNames: [String: String] = [:]
+    private var rate: Double = 0
+    private var currency: Bool = false
+    private var metricName: String = ""
 
     /// 图表每条线的目标最大点数（统计仍按 1 秒，不受影响）。
     private let chartPointBudget = 120
+    /// 图例最多展示的客户端数，保证菜单高度稳定。
+    private let maxLegendSeries = 4
+
+    /// 立即更新口径名称（菜单下次打开时生效）。
+    func setMetricName(_ name: String) {
+        metricName = name
+    }
 
     func update(from snapshot: RateSnapshot, metricName: String) {
         trend = snapshot.trend
@@ -54,29 +62,28 @@ final class TrendModel: ObservableObject {
         rate = snapshot.rate
         currency = snapshot.unitIsCurrency
         self.metricName = metricName
-        recompute()
     }
 
-    private func recompute() {
-        guard let trend, !trend.timestamps.isEmpty else {
-            series = []
-            total = 0
-            peak = 0
-            return
-        }
+    /// 生成当前时刻的图表快照。
+    func chartData() -> TrendChartData {
+        var data = TrendChartData()
+        data.rate = rate
+        data.currency = currency
+        data.metricName = metricName
 
-        let rangeSeconds = rangeMinutes * 60
+        guard let trend, !trend.timestamps.isEmpty else { return data }
+
+        let rangeSeconds = TrendChartData.rangeMinutes * 60
         let count = trend.timestamps.count
         let startIndex = max(0, count - rangeSeconds)
 
-        // 统计按 1 秒粒度（峰值 = 最高 1 秒消耗）
-        total = trend.total[startIndex...].reduce(0, +)
-        peak = trend.total[startIndex...].max() ?? 0
+        data.total = trend.total[startIndex...].reduce(0, +)
+        data.peak = trend.total[startIndex...].max() ?? 0
 
-        // 图表降采样：把相邻若干秒合成一个点
+        // 降采样：把相邻若干秒合成一个点。
         let step = max(1, Int((Double(rangeSeconds) / Double(chartPointBudget)).rounded()))
 
-        var result: [Series] = []
+        var result: [TrendChartData.Series] = []
         for (sourceId, values) in trend.perSource {
             guard values.count == count else { continue }
             let slice = Array(values[startIndex...])
@@ -95,7 +102,7 @@ final class TrendModel: ObservableObject {
                 index = end
             }
 
-            result.append(Series(
+            result.append(TrendChartData.Series(
                 id: sourceId,
                 name: sourceNames[sourceId] ?? sourceId,
                 color: SourcePalette.color(for: sourceId),
@@ -105,32 +112,48 @@ final class TrendModel: ObservableObject {
         }
 
         result.sort { $0.subtotal > $1.subtotal }
-        series = result
+        data.series = Array(result.prefix(maxLegendSeries))
+        data.yMax = Self.niceMax(data.series.flatMap { $0.points.map(\.value) }.max() ?? 0)
+        return data
+    }
+
+    /// 把上限取整到 1 / 2 / 5 × 10^k，让 Y 轴刻度稳定好看。
+    static func niceMax(_ value: Double) -> Double {
+        guard value > 0 else { return 1 }
+        let exponent = floor(log10(value))
+        let base = value / pow(10, exponent)
+        let nice: Double
+        switch base {
+        case ...1: nice = 1
+        case ...2: nice = 2
+        case ...5: nice = 5
+        default: nice = 10
+        }
+        return nice * pow(10, exponent)
     }
 }
 
 /// 菜单内嵌的紧凑趋势图（每个客户端一条彩色折线）。
-///
-/// 范围切换由外层菜单项负责，这里只负责画图与图例，避免在 NSMenu 里
-/// 放置可点击的分段控件。
 struct TrendChartView: View {
-    @ObservedObject var model: TrendModel
+    let data: TrendChartData
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text("消耗趋势 · 最近 \(model.rangeMinutes) 分钟")
+                Text("消耗趋势 · 最近 \(TrendChartData.rangeMinutes) 分钟")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(model.metricName)
+                Text(data.metricName)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
 
+            stats
+
             chart
 
-            if !model.series.isEmpty {
+            if !data.series.isEmpty {
                 legend
             }
         }
@@ -139,9 +162,29 @@ struct TrendChartView: View {
         .frame(width: 340)
     }
 
+    private var stats: some View {
+        HStack(spacing: 16) {
+            stat("当前速率", Formatting.rate(data.rate, currency: data.currency))
+            stat("合计", Formatting.units(data.total, currency: data.currency))
+            stat("峰值", Formatting.units(data.peak, currency: data.currency))
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func stat(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.caption, design: .rounded))
+                .monospacedDigit()
+        }
+    }
+
     private var chart: some View {
         Chart {
-            ForEach(model.series) { series in
+            ForEach(data.series) { series in
                 ForEach(series.points) { point in
                     LineMark(
                         x: .value("时间", point.date),
@@ -155,6 +198,7 @@ struct TrendChartView: View {
             }
         }
         .chartLegend(.hidden)
+        .chartYScale(domain: 0...data.yMax)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                 AxisGridLine()
@@ -180,7 +224,7 @@ struct TrendChartView: View {
             alignment: .leading,
             spacing: 4
         ) {
-            ForEach(model.series) { series in
+            ForEach(data.series) { series in
                 HStack(spacing: 5) {
                     Circle()
                         .fill(series.color)
@@ -189,7 +233,7 @@ struct TrendChartView: View {
                         .font(.caption2)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    Text(Formatting.units(series.subtotal, currency: model.currency))
+                    Text(Formatting.units(series.subtotal, currency: data.currency))
                         .font(.caption2)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)

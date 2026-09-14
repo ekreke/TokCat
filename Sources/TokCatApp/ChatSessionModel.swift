@@ -1,7 +1,13 @@
 import Foundation
 import TokCatAgent
+import TokCatCore
 
-/// Chat 弹窗的视图模型：驱动一次 ACP 会话（可多轮追问，只显示最新回答）。
+/// Chat 弹窗的视图模型：驱动一个**常驻**的 ACP 会话（可多轮追问，只显示最新回答）。
+///
+/// 生命周期：
+/// - 左键打开 → `ensureSession`：已就绪且配置未变则复用，否则启动。
+/// - 关闭弹窗**不结束**会话；空闲超过 `idleReapInterval` 才回收进程。
+/// - 换 Agent / 改工作目录 / 退出 App → `shutdown()`。
 ///
 /// 所有公开发起的方法都应在主线程调用；来自 agent 的回调统一跳回主线程。
 final class ChatSessionModel: ObservableObject, @unchecked Sendable {
@@ -24,6 +30,8 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
     @Published private(set) var status: Status = .idle
     /// 最新一条回答（流式累积；每次发送前清空）。
     @Published private(set) var answer: String = ""
+    /// 供 Markdown 渲染的节流快照（避免每个 token 都重解析整段）。
+    @Published private(set) var displayAnswer: String = ""
     /// 当前活动提示（思考中 / 运行工具 / 等待授权）。
     @Published private(set) var activity: String = ""
     @Published var input: String = ""
@@ -32,7 +40,16 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
 
     private var client: ACPClient?
     private var sessionId: String?
+    private var activeConfiguration: ACPLaunchConfiguration?
     private var permissionContinuation: CheckedContinuation<ACPPermissionResult, Never>?
+
+    private var idleTimer: Timer?
+    private var lastActivity = Date()
+    /// 空闲回收阈值。
+    private let idleReapInterval: TimeInterval = 3600
+    private let idleCheckInterval: TimeInterval = 60
+    /// 流式 Markdown 渲染节流（150ms）。
+    private let throttle = StreamingTextThrottle(interval: 0.15)
 
     var canSend: Bool {
         status == .ready && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -40,13 +57,30 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
 
     // MARK: - 生命周期
 
-    /// 启动会话：launch 进程 → initialize → session/new。
-    func start(configuration: ACPLaunchConfiguration, displayName: String) {
-        stop()
+    /// 确保有一个可用的会话：已就绪且配置未变则复用，否则（首次 / 失败 / 配置变）启动。
+    func ensureSession(configuration: ACPLaunchConfiguration, displayName: String) {
+        if activeConfiguration == configuration,
+           let client, client.isRunning,
+           sessionId != nil,
+           status == .ready || status == .running || status == .starting {
+            touch()
+            return
+        }
+        start(configuration: configuration, displayName: displayName)
+    }
+
+    private func start(configuration: ACPLaunchConfiguration, displayName: String) {
+        teardownClient()
+        resolvePermission(with: .cancelled)
+        sessionId = nil
+        activeConfiguration = configuration
         agentName = displayName
         answer = ""
+        displayAnswer = ""
+        throttle.reset()
         activity = "连接中…"
         status = .starting
+        touch()
 
         let client = ACPClient(configuration: configuration)
         client.onEvent = { [weak self] event in
@@ -74,10 +108,13 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                 guard let session = try? await client.newSession(cwd: configuration.cwd) else {
                     throw ACPClientError.invalidResponse("session/new 无 sessionId")
                 }
+                // 期间可能已被替换/关闭，避免覆盖新状态。
+                guard self.client === client else { return }
                 self.sessionId = session.sessionId
                 self.status = .ready
                 self.activity = ""
             } catch {
+                guard self.client === client else { return }
                 self.status = .failed(error.localizedDescription)
                 self.activity = ""
             }
@@ -86,25 +123,61 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
 
     /// 直接进入失败态（例如 agent 未安装），供控制器展示安装引导。
     func reportUnavailable(displayName: String, message: String) {
-        stop()
+        shutdown()
         agentName = displayName
         status = .failed(message)
         activity = ""
         answer = ""
+        displayAnswer = ""
     }
 
-    func stop() {
-        permissionContinuation?.resume(returning: .cancelled)
-        permissionContinuation = nil
-        pendingPermission = nil
-        client?.stop()
-        client = nil
+    /// 彻底断开：回收进程并清空会话状态。
+    func shutdown() {
+        teardownClient()
+        activeConfiguration = nil
+        resolvePermission(with: .cancelled)
         sessionId = nil
-        if status != .idle {
-            status = .idle
-        }
+        status = .idle
         activity = ""
         answer = ""
+        displayAnswer = ""
+        throttle.reset()
+        stopIdleTimer()
+    }
+
+    private func teardownClient() {
+        client?.stop()
+        client = nil
+    }
+
+    // MARK: - 空闲回收
+
+    private func touch() {
+        lastActivity = Date()
+        startIdleTimerIfNeeded()
+    }
+
+    private func startIdleTimerIfNeeded() {
+        guard idleTimer == nil else { return }
+        let timer = Timer(timeInterval: idleCheckInterval, repeats: true) { [weak self] _ in
+            guard let self, let client = self.client, client.isRunning else { return }
+            if Date().timeIntervalSince(self.lastActivity) >= self.idleReapInterval {
+                NSLog("TokCat: ACP 会话空闲 \(Int(self.idleReapInterval / 60)) 分钟，回收进程")
+                self.teardownClient()
+                self.activeConfiguration = nil
+                self.sessionId = nil
+                self.status = .idle
+                self.activity = "已空闲断开"
+                self.stopIdleTimer()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        idleTimer = timer
+    }
+
+    private func stopIdleTimer() {
+        idleTimer?.invalidate()
+        idleTimer = nil
     }
 
     // MARK: - 对话
@@ -114,8 +187,11 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         guard !text.isEmpty, let client, let sessionId, status == .ready else { return }
         input = ""
         answer = ""
+        displayAnswer = ""
+        throttle.reset()
         activity = "思考中…"
         status = .running
+        touch()
 
         Task { @MainActor in
             do {
@@ -124,9 +200,11 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                     self.status = .ready
                     self.activity = ""
                 }
+                self.forceDisplayFlush()
             } catch {
                 self.status = .failed(error.localizedDescription)
                 self.activity = ""
+                self.forceDisplayFlush()
             }
         }
     }
@@ -139,11 +217,11 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
     // MARK: - 权限
 
     func choosePermission(optionId: String) {
-        finishPermission(with: .selected(optionId))
+        resolvePermission(with: .selected(optionId))
     }
 
     func denyPermission() {
-        finishPermission(with: .cancelled)
+        resolvePermission(with: .cancelled)
     }
 
     private func requestPermission(_ params: ACPPermissionParams) async -> ACPPermissionResult {
@@ -155,24 +233,28 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                     options: params.options
                 )
                 self.activity = "等待授权…"
+                self.touch()
             }
         }
     }
 
-    private func finishPermission(with result: ACPPermissionResult) {
+    private func resolvePermission(with result: ACPPermissionResult) {
+        guard let continuation = permissionContinuation else { return }
         pendingPermission = nil
         activity = status == .running ? "思考中…" : ""
-        permissionContinuation?.resume(returning: result)
         permissionContinuation = nil
+        continuation.resume(returning: result)
     }
 
     // MARK: - 事件
 
     private func handle(_ event: AgentEvent) {
+        touch()
         switch event {
         case let .agentText(text):
             answer += text
             if pendingPermission == nil { activity = "" }
+            scheduleDisplayFlush()
         case .agentThought:
             if status == .running, pendingPermission == nil { activity = "思考中…" }
         case let .toolCall(title):
@@ -186,8 +268,30 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
 
     private func handleExit(_ code: Int32) {
         guard status != .idle else { return }
+        teardownClient()
+        activeConfiguration = nil
+        sessionId = nil
         status = .failed("agent 已退出（code \(code)）")
         activity = ""
+        forceDisplayFlush()
+    }
+
+    // MARK: - 渲染节流
+
+    /// 回答增量到达时调用：按 150ms 节流刷新 Markdown 快照。
+    private func scheduleDisplayFlush() {
+        throttle.submit { [weak self] in
+            guard let self else { return }
+            self.displayAnswer = self.answer
+        }
+    }
+
+    /// 回答结束/失败时立即刷新，保证渲染完整内容。
+    private func forceDisplayFlush() {
+        throttle.force { [weak self] in
+            guard let self else { return }
+            self.displayAnswer = self.answer
+        }
     }
 }
 

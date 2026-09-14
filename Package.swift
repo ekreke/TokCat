@@ -12,6 +12,10 @@ let package = Package(
         .library(name: "TokCatSources", targets: ["TokCatSources"]),
         .library(name: "TokCatAgent", targets: ["TokCatAgent"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.4.0"),
+        .package(url: "https://github.com/smittytone/HighlighterSwift", from: "3.1.0"),
+    ],
     targets: [
         .target(
             name: "TokCatCore"
@@ -26,7 +30,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "TokCatApp",
-            dependencies: ["TokCatCore", "TokCatSources", "TokCatAgent"],
+            dependencies: [
+                "TokCatCore",
+                "TokCatSources",
+                "TokCatAgent",
+                .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+                .product(name: "Highlighter", package: "HighlighterSwift"),
+            ],
             resources: [
                 .copy("Resources")
             ]

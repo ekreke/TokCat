@@ -3,7 +3,9 @@ import Foundation
 import TokCatAgent
 
 /// 「Agent 检测 / 一键安装」窗口的视图模型。
-final class AgentSetupModel: ObservableObject {
+///
+/// 检测涉及登入 shell 解析（阻塞），统一放到后台线程执行。
+final class AgentSetupModel: ObservableObject, @unchecked Sendable {
     struct Row: Identifiable {
         let preset: AgentPreset
         let installed: Bool
@@ -24,15 +26,20 @@ final class AgentSetupModel: ObservableObject {
         refresh()
     }
 
+    /// 后台重新检测（涉及登入 shell 解析，不能在主线程做）。
     func refresh() {
-        ShellEnvironment.invalidateCache()
-        rows = AgentPreset.builtins.map { preset in
-            switch AgentDetector.status(for: preset, customCommand: customCommand) {
-            case let .ready(path):
-                return Row(preset: preset, installed: true, path: path)
-            case .missing:
-                return Row(preset: preset, installed: false, path: nil)
+        let command = customCommand
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            ShellEnvironment.invalidateCache()
+            let rows = AgentPreset.builtins.map { preset -> Row in
+                switch AgentDetector.status(for: preset, customCommand: command) {
+                case let .ready(path):
+                    return Row(preset: preset, installed: true, path: path)
+                case .missing:
+                    return Row(preset: preset, installed: false, path: nil)
+                }
             }
+            DispatchQueue.main.async { self?.rows = rows }
         }
     }
 

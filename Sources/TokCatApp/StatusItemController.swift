@@ -18,6 +18,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private lazy var chat = ChatPopoverController(settings: settings)
     private lazy var agentSetup = AgentSetupController(settings: settings)
 
+    private var trendChartHosting: NSHostingView<TrendChartView>?
+    private lazy var trendChartItem = makeTrendChartItem()
+    private var agentStatusCache: [String: AgentDetector.Status] = [:]
+
     private var frameTimer: Timer?
     private var frameIndex = 0
     private var frameBaseIndex = 0
@@ -50,10 +54,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             stateStore: stateStore
         )
         super.init()
-        trendModel.rangeMinutes = settings.trendRangeMinutes
-        trendModel.onRangeChange = { [weak self] minutes in
-            self?.settings.trendRangeMinutes = minutes
-        }
         engine.onUpdate = { [weak self] snapshot in
             guard let self else { return }
             self.currentRate = snapshot.rate
@@ -73,6 +73,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         chat.setSetupHandler { [weak self] in self?.agentSetup.show() }
 
+        // 预热：提前建好 Chat 弹窗与趋势图 hosting view，并后台解析 Agent 状态，
+        // 避免第一次点击时才在主线程做这些耗时工作。
+        _ = chat
+        _ = trendChartItem
+        DispatchQueue.global(qos: .utility).async { _ = ShellEnvironment.loginPath() }
+        refreshAgentStatusInBackground()
+
         renderFrame()
         engine.start()
         startFrameTimer()
@@ -85,6 +92,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         frameTimer?.invalidate()
         frameTimer = nil
         engine.stop()
+        chat.shutdown()
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
@@ -175,8 +183,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        menu.addItem(trendMenuItem())
-        menu.addItem(trendRangeMenu())
+        // 后台刷新 Agent 检测缓存（安装后菜单能反映最新状态），菜单本身读缓存不阻塞。
+        refreshAgentStatusInBackground()
+
+        refreshTrendChart()
+        menu.addItem(trendChartItem)
 
         menu.addItem(.separator())
 
@@ -205,38 +216,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(item("退出 TokCat", #selector(quit), key: "q"))
     }
 
-    /// 菜单顶部的趋势图（目前左键的图挪到这里；不再显示文字统计）。
-    private func trendMenuItem() -> NSMenuItem {
+    /// 菜单顶部的趋势图（复用同一个 hosting view，避免每次重开都新建、首次也更快）。
+    private func makeTrendChartItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let hosting = NSHostingView(rootView: TrendChartView(model: trendModel))
-        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 176)
+        let hosting = NSHostingView(rootView: TrendChartView(data: .empty))
+        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 200)
+        trendChartHosting = hosting
         item.view = hosting
         return item
     }
 
-    private func trendRangeMenu() -> NSMenuItem {
-        let parent = NSMenuItem(title: "趋势范围", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        for minutes in TrendModel.rangeOptions {
-            let entry = NSMenuItem(title: "\(minutes) 分钟", action: #selector(selectTrendRange(_:)), keyEquivalent: "")
-            entry.target = self
-            entry.representedObject = minutes
-            entry.state = minutes == trendModel.rangeMinutes ? .on : .off
-            submenu.addItem(entry)
-        }
-        parent.submenu = submenu
-        return parent
+    /// 取一份当前快照刷新图表（菜单打开时调用一次，打开期间不再重绘）。
+    private func refreshTrendChart() {
+        guard let hosting = trendChartHosting else { return }
+        hosting.rootView = TrendChartView(data: trendModel.chartData())
+        hosting.layoutSubtreeIfNeeded()
+        let fitting = hosting.fittingSize
+        let height = fitting.height > 60 ? fitting.height : 200
+        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: height)
     }
 
     private func agentMenu() -> NSMenuItem {
         let parent = NSMenuItem(title: "Agent", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
         for preset in AgentPreset.builtins {
-            let status = AgentDetector.status(for: preset, customCommand: settings.customAgentCommand)
             let suffix: String
-            switch status {
-            case .ready: suffix = ""
-            case .missing: suffix = preset.id == AgentPreset.customID ? "" : "（未安装）"
+            switch agentStatusCache[preset.id] {
+            case .ready:
+                suffix = ""
+            case .missing:
+                suffix = preset.id == AgentPreset.customID ? "" : "（未安装）"
+            case nil:
+                suffix = ""
             }
             let entry = NSMenuItem(
                 title: "\(preset.displayName)\(suffix)",
@@ -250,13 +261,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         submenu.addItem(.separator())
         submenu.addItem(item("安装 / 重新检测…", #selector(openAgentSetup)))
+        submenu.addItem(item("断开 Agent", #selector(disconnectAgent)))
         parent.submenu = submenu
         return parent
     }
 
-    @objc private func selectTrendRange(_ sender: NSMenuItem) {
-        guard let minutes = sender.representedObject as? Int else { return }
-        trendModel.rangeMinutes = minutes
+    /// 后台预热/刷新 agent 检测结果，菜单读取缓存避免触发 shell。
+    private func refreshAgentStatusInBackground() {
+        let command = settings.customAgentCommand
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var cache: [String: AgentDetector.Status] = [:]
+            for preset in AgentPreset.builtins {
+                cache[preset.id] = AgentDetector.status(for: preset, customCommand: command)
+            }
+            DispatchQueue.main.async { self?.agentStatusCache = cache }
+        }
+    }
+
+    @objc private func disconnectAgent() {
+        chat.shutdown()
     }
 
     @objc private func selectAgent(_ sender: NSMenuItem) {
@@ -402,7 +425,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let raw = sender.representedObject as? String, let kind = MetricKind(rawValue: raw) else { return }
         settings.metricKind = kind
         engine.updateConverter(settings.makeConverter(pricing: pricing))
-        trendModel.metricName = kind.displayName
+        trendModel.setMetricName(kind.displayName)
     }
 
     @objc private func selectSensitivity(_ sender: NSMenuItem) {

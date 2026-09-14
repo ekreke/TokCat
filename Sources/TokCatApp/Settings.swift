@@ -40,10 +40,11 @@ final class AppSettings {
         static let sourceOverrides = "sourceOverrides"
         static let iconSize = "iconSize"
         static let maxFPS = "maxFPS"
-        static let trendRangeMinutes = "trendRangeMinutes"
         static let agentPreset = "agentPreset"
         static let customAgentCommand = "customAgentCommand"
         static let agentWorkingDirectory = "agentWorkingDirectory"
+        static let chatWidth = "chatWidth"
+        static let chatHeight = "chatHeight"
     }
 
     static let defaultAnimationIdentifier = "runcat.cat"
@@ -72,14 +73,6 @@ final class AppSettings {
             return value > 0 ? value : 24
         }
         set { defaults.set(newValue, forKey: Key.maxFPS) }
-    }
-
-    var trendRangeMinutes: Int {
-        get {
-            let value = defaults.integer(forKey: Key.trendRangeMinutes)
-            return value > 0 ? value : 5
-        }
-        set { defaults.set(newValue, forKey: Key.trendRangeMinutes) }
     }
 
     var sensitivity: Double {
@@ -128,6 +121,24 @@ final class AppSettings {
     /// 当前预设（找不到时回退 hermes）。
     var agentPreset: AgentPreset {
         AgentPreset.builtin(id: agentPresetId) ?? AgentPreset.builtin(id: "hermes")!
+    }
+
+    /// Chat 弹窗宽度（可拖动调整）。
+    var chatWidth: Double {
+        get {
+            let value = defaults.double(forKey: Key.chatWidth)
+            return value > 0 ? value : 440
+        }
+        set { defaults.set(newValue, forKey: Key.chatWidth) }
+    }
+
+    /// Chat 弹窗高度（可拖动调整）。
+    var chatHeight: Double {
+        get {
+            let value = defaults.double(forKey: Key.chatHeight)
+            return value > 0 ? value : 480
+        }
+        set { defaults.set(newValue, forKey: Key.chatHeight) }
     }
 
     // MARK: - 采集源开关

@@ -1,4 +1,4 @@
-.PHONY: build release test run app dump clean
+.PHONY: build release test run app dump highlightcheck clean
 
 build:
 	swift build
@@ -17,6 +17,9 @@ app:
 
 dump:
 	swift run TokCat dump
+
+highlightcheck:
+	swift run TokCat highlightcheck
 
 clean:
 	rm -rf .build build
