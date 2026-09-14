@@ -1,0 +1,8 @@
+{
+  "id": "runcat.cat",
+  "displayName": "Cat (RunCat sprites)",
+  "frames": ["cat_0.png", "cat_1.png", "cat_2.png", "cat_3.png", "cat_4.png"],
+  "idleFPS": 2,
+  "maxFPS": 40,
+  "supportsColor": false
+}

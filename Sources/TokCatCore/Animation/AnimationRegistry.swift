@@ -32,14 +32,13 @@ public final class AnimationRegistry {
     }
 
     public var defaultPack: AnimationPack? {
-        pack(identifier: BuiltinCatPack.identifier) ?? allPacks.first
+        allPacks.first
     }
 
-    /// 注册内置包并扫描外部目录。返回加载到的外部包数量。
+    /// 扫描外部目录并注册动画包。返回加载到的数量。
     @discardableResult
     public func loadAll(externalDirectory: URL = AnimationRegistry.defaultExternalDirectory) -> Int {
-        register(BuiltinCatPack())
-        return loadExternalPacks(from: externalDirectory)
+        loadExternalPacks(from: externalDirectory)
     }
 
     /// 扫描外部目录，加载所有合法的动画包。

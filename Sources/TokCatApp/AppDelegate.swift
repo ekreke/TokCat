@@ -8,6 +8,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AnimationRegistry.shared.loadAll()
+        let bundled = BundledAnimations.register()
+        if Debug.enabled {
+            Debug.log("动画包: \(AnimationRegistry.shared.allPacks.map(\.displayName).joined(separator: ", ")) (内置素材包 \(bundled) 个)")
+        }
 
         let pricing = ModelPricingStore.loadDefault()
         var sources = SourceFactory.makeDefault(store: store)

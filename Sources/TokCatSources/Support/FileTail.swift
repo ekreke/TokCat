@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// 单文件增量尾部读取器。
 ///
@@ -13,10 +14,12 @@ public final class FileTail {
 
     /// 读取自上次以来新增的完整行，并推进游标。
     public func readNewLines(at url: URL) -> [String] {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = (attrs[.size] as? NSNumber)?.intValue else {
-            return []
-        }
+        var info = stat()
+        // 用 POSIX stat 而非 FileManager.attributesOfItem：日志目录文件很多，
+        // 后者会构造字典，轮询开销明显。
+        guard url.path.withCString({ stat($0, &info) }) == 0 else { return [] }
+        let size = Int(info.st_size)
+
         if size < offset { offset = 0 }
         guard size > offset else { return [] }
 

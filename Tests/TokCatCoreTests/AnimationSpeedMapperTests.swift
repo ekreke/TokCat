@@ -20,14 +20,14 @@ final class AnimationSpeedMapperTests: XCTestCase {
     }
 
     func testFPSStaysWithinPackBounds() {
-        let pack = BuiltinCatPack()
+        let pack = TestAnimationPack()
         let mapper = AnimationSpeedMapper()
         XCTAssertEqual(mapper.fps(rate: 0, pack: pack), pack.idleFPS, accuracy: 0.0001)
         XCTAssertEqual(mapper.fps(rate: 1_000_000, pack: pack), pack.maxFPS, accuracy: 0.0001)
     }
 
     func testHigherRateMeansShorterInterval() {
-        let pack = BuiltinCatPack()
+        let pack = TestAnimationPack()
         let mapper = AnimationSpeedMapper()
         let slow = mapper.frameInterval(rate: 10, pack: pack)
         let fast = mapper.frameInterval(rate: 5_000, pack: pack)

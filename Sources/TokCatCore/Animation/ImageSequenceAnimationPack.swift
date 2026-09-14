@@ -11,7 +11,7 @@ import AppKit
 /// manifest.json 格式：
 /// ```json
 /// { "id": "cat-hd", "displayName": "Cat HD",
-///   "frames": ["00.png", "01.png"], "idleFPS": 1.5, "maxFPS": 18 }
+///   "frames": ["00.png", "01.png"], "idleFPS": 2, "maxFPS": 24 }
 /// ```
 public final class ImageSequenceAnimationPack: AnimationPack {
     public let identifier: String
@@ -19,6 +19,7 @@ public final class ImageSequenceAnimationPack: AnimationPack {
     public let idleFPS: Double
     public let maxFPS: Double
     public let frameCount: Int
+    public let supportsColor: Bool
 
     private let urls: [URL]
     private var cache: [CacheKey: NSImage] = [:]
@@ -26,6 +27,7 @@ public final class ImageSequenceAnimationPack: AnimationPack {
     private struct CacheKey: Hashable {
         let frame: Int
         let height: Int
+        let template: Bool
     }
 
     private struct Manifest: Decodable {
@@ -34,6 +36,7 @@ public final class ImageSequenceAnimationPack: AnimationPack {
         var frames: [String]
         var idleFPS: Double?
         var maxFPS: Double?
+        var supportsColor: Bool?
     }
 
     public init?(directory: URL) {
@@ -45,8 +48,9 @@ public final class ImageSequenceAnimationPack: AnimationPack {
         }
         self.identifier = manifest.id
         self.displayName = manifest.displayName
-        self.idleFPS = manifest.idleFPS ?? 1.5
-        self.maxFPS = manifest.maxFPS ?? 18
+        self.idleFPS = manifest.idleFPS ?? 2
+        self.maxFPS = manifest.maxFPS ?? 24
+        self.supportsColor = manifest.supportsColor ?? false
         self.urls = manifest.frames.map { directory.appendingPathComponent($0) }
         self.frameCount = urls.count
         guard urls.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) else {
@@ -54,14 +58,15 @@ public final class ImageSequenceAnimationPack: AnimationPack {
         }
     }
 
-    public func image(frameIndex: Int, height: CGFloat) -> NSImage? {
+    public func image(frameIndex: Int, height: CGFloat, template: Bool) -> NSImage? {
         let index = ((frameIndex % frameCount) + frameCount) % frameCount
-        let key = CacheKey(frame: index, height: Int(height.rounded()))
+        let key = CacheKey(frame: index, height: Int(height.rounded()), template: template)
         if let cached = cache[key] { return cached }
-        guard let image = NSImage(contentsOf: urls[index]) else { return nil }
-        image.size = NSSize(width: height * image.size.width / max(image.size.height, 1), height: height)
-        image.isTemplate = true
-        cache[key] = image
-        return image
+        guard let raw = NSImage(contentsOf: urls[index]),
+              let scaled = PixelScaling.nearestNeighbor(raw, targetHeight: height, template: template) else {
+            return nil
+        }
+        cache[key] = scaled
+        return scaled
     }
 }

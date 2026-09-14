@@ -17,15 +17,15 @@ enum Formatting {
         compact(Double(value))
     }
 
-    /// 速率展示，例如 "1.23K tok/s" 或 "$0.0042/s"。
+    /// 速率展示，例如 "1.23K t/s" 或 "$0.0042/s"。
     static func rate(_ value: Double, currency: Bool) -> String {
         if currency {
             return String(format: "$%.4f/s", value)
         }
-        return "\(compact(value)) tok/s"
+        return "\(compact(value)) t/s"
     }
 
     static func units(_ value: Double, currency: Bool) -> String {
-        currency ? String(format: "$%.4f", value) : "\(compact(value)) tok"
+        currency ? String(format: "$%.4f", value) : "\(compact(value)) t"
     }
 }

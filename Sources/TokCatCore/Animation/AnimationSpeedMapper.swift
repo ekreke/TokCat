@@ -2,26 +2,26 @@ import Foundation
 
 /// 把 token 消耗速率映射为动画帧率。
 ///
-/// 采用对数曲线：低速率时灵敏度高（轻微消耗即可看到加速），
-/// 高速率时趋于饱和，避免动画快到不可辨认。
+/// 对齐 RunCat 的线性模型：`速度 = max(1, 负载比例 × 最大速率)`，
+/// 速率越高帧率越高，到 `saturationRate` 后饱和。
 public struct AnimationSpeedMapper: Equatable, Sendable {
-    /// 用户灵敏度倍率。
+    /// 用户灵敏度倍率（乘在速率上）。
     public var sensitivity: Double
     /// 达到最高帧率所对应的速率（单位/秒）。
     public var saturationRate: Double
+    /// 最高帧率上限（RunCat 的可选项：10/20/30/40）。
+    public var maxFPS: Double
 
-    public init(sensitivity: Double = 1, saturationRate: Double = 300) {
+    public init(sensitivity: Double = 1, saturationRate: Double = 300, maxFPS: Double = 24) {
         self.sensitivity = max(0.01, sensitivity)
         self.saturationRate = max(1, saturationRate)
+        self.maxFPS = max(2, maxFPS)
     }
 
-    /// 返回 0..1 的加速进度。
+    /// 返回 0..1 的加速进度（线性，对齐 RunCat）。
     public func progress(rate: Double) -> Double {
         guard rate > 0 else { return 0 }
-        let numerator = log1p(rate * sensitivity)
-        let denominator = log1p(saturationRate * sensitivity)
-        guard denominator > 0 else { return 0 }
-        return min(max(numerator / denominator, 0), 1)
+        return min(max(rate * sensitivity / saturationRate, 0), 1)
     }
 
     public func fps(rate: Double, idleFPS: Double, maxFPS: Double) -> Double {
@@ -29,8 +29,9 @@ public struct AnimationSpeedMapper: Equatable, Sendable {
         return idleFPS + (maxFPS - idleFPS) * p
     }
 
+    /// 使用当前设置的最高帧率上限，空闲帧率取动画包自身定义。
     public func fps(rate: Double, pack: AnimationPack) -> Double {
-        fps(rate: rate, idleFPS: pack.idleFPS, maxFPS: pack.maxFPS)
+        fps(rate: rate, idleFPS: min(pack.idleFPS, maxFPS), maxFPS: maxFPS)
     }
 
     /// 帧间隔（秒）。速率越高间隔越小。

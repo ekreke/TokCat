@@ -9,16 +9,31 @@ struct RateSnapshot {
     let totalUsage: TokenUsage
     let unitIsCurrency: Bool
     let eventCounts: [String: Int]
+    let trend: RateHistory.RateTrend
+    /// 来源 id → 展示名称。
+    let sourceNames: [String: String]
+    /// 趋势窗口（秒）。
+    let windowSeconds: Int
 }
 
-/// 速率引擎：周期性轮询各采集源，聚合样本并计算速率。
+/// 速率引擎：周期性轮询各采集源，聚合样本、计算速率并记录历史。
+///
+/// 采集与解析是重活（目录遍历、文件读取、SQLite 查询、JSON 解析），
+/// 全部在后台串行队列执行，避免阻塞主线程导致动画卡顿；结果再回主线程。
 final class RateEngine {
+    /// 主线程回调。
     var onUpdate: ((RateSnapshot) -> Void)?
 
     private let sources: [TokenSource]
     private let aggregator: RateAggregator
+    private let history = RateHistory(window: 600)
     private let stateStore: SourceStateStore?
-    private var timer: Timer?
+    private let queue = DispatchQueue(label: "tokcat.engine", qos: .utility)
+    private var timer: DispatchSourceTimer?
+
+    /// 趋势聚合粒度：1 秒，使"峰值"即最高 1 秒消耗（与速率同口径）。
+    private let aggregateSeconds = 1
+    private let sourceNames: [String: String]
 
     init(sources: [TokenSource],
          converter: TokenUnitConverter,
@@ -27,49 +42,95 @@ final class RateEngine {
         self.sources = sources
         self.aggregator = RateAggregator(converter: converter, window: window)
         self.stateStore = stateStore
+        self.sourceNames = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.displayName) })
     }
 
     var allSources: [TokenSource] { sources }
 
     func start() {
         stop()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 1, repeating: 1.0, leeway: .milliseconds(100))
+        timer.setEventHandler { [weak self] in
             self?.tick()
         }
-        timer.tolerance = 0.2
-        RunLoop.main.add(timer, forMode: .common)
+        timer.resume()
         self.timer = timer
     }
 
     func stop() {
-        timer?.invalidate()
+        timer?.cancel()
         timer = nil
     }
 
     func updateConverter(_ converter: TokenUnitConverter) {
-        aggregator.converter = converter
+        queue.async { [weak self] in
+            self?.aggregator.converter = converter
+            self?.history.reset()
+        }
     }
 
     func resetTotals() {
-        aggregator.reset()
+        queue.async { [weak self] in
+            self?.aggregator.reset()
+            self?.history.reset()
+        }
     }
 
     private func tick() {
+        let start = DispatchTime.now()
         let now = Date()
+
         var samples: [TokenSample] = []
         for source in sources where source.isEnabled {
-            samples.append(contentsOf: source.poll(now: now))
+            let sourceStart = DispatchTime.now()
+            let produced = source.poll(now: now)
+            if Debug.enabled {
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - sourceStart.uptimeNanoseconds) / 1_000_000
+                if ms > 3 {
+                    Debug.log(String(format: "  source %@ %.1fms samples=%d", source.id, ms, produced.count))
+                }
+            }
+            samples.append(contentsOf: produced)
         }
+
         aggregator.ingest(samples)
         let rate = aggregator.tick(now: now)
+
+        // 按来源分别累计本 tick 的消耗，供趋势图分客户端绘制。
+        var perSource: [String: (units: Double, usage: TokenUsage)] = [:]
+        for sample in samples {
+            let units = aggregator.converter.units(for: sample)
+            var entry = perSource[sample.sourceId] ?? (0, .zero)
+            entry.units += units
+            entry.usage += sample.usage
+            perSource[sample.sourceId] = entry
+        }
+        for (sourceId, entry) in perSource {
+            history.record(sourceId: sourceId, usage: entry.usage, units: entry.units, at: now)
+        }
+
         stateStore?.saveIfNeeded(now: now)
 
-        onUpdate?(RateSnapshot(
+        let snapshot = RateSnapshot(
             rate: rate,
             totalUnits: aggregator.totalUnits,
             totalUsage: aggregator.totalUsage,
             unitIsCurrency: aggregator.converter.unitIsCurrency,
-            eventCounts: aggregator.perSourceCount
-        ))
+            eventCounts: aggregator.perSourceCount,
+            trend: history.trend(now: now, aggregateSeconds: aggregateSeconds),
+            sourceNames: sourceNames,
+            windowSeconds: history.window
+        )
+
+        if Debug.enabled {
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+            Debug.log(String(format: "tick %.1fms samples=%d rate=%.1f trendSources=%d",
+                             elapsedMs, samples.count, rate, perSource.count))
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onUpdate?(snapshot)
+        }
     }
 }

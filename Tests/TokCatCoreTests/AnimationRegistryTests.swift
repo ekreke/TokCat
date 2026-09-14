@@ -3,20 +3,16 @@ import AppKit
 @testable import TokCatCore
 
 final class AnimationRegistryTests: XCTestCase {
-    func testBuiltinCatPackRendersFrames() {
-        let pack = BuiltinCatPack()
-        XCTAssertGreaterThan(pack.frameCount, 0)
-        XCTAssertNotNil(pack.image(frameIndex: 0, height: 18))
-        // 帧索引取模，负索引也应安全
-        XCTAssertNotNil(pack.image(frameIndex: -1, height: 18))
-    }
-
     func testRegistryRegistersAndLooksUp() {
         let registry = AnimationRegistry()
-        let pack = BuiltinCatPack()
+        let pack = TestAnimationPack(identifier: "a.pack", displayName: "A")
         registry.register(pack)
-        XCTAssertNotNil(registry.pack(identifier: BuiltinCatPack.identifier))
-        XCTAssertEqual(registry.defaultPack?.identifier, BuiltinCatPack.identifier)
+        XCTAssertNotNil(registry.pack(identifier: "a.pack"))
+        XCTAssertEqual(registry.defaultPack?.identifier, "a.pack")
+    }
+
+    func testDefaultPackIsFirstWhenEmpty() {
+        XCTAssertNil(AnimationRegistry().defaultPack)
     }
 
     func testLoadExternalPackFromTempDirectory() throws {

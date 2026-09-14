@@ -45,6 +45,17 @@ public struct TokenUsage: Equatable, Sendable {
     public static func += (lhs: inout TokenUsage, rhs: TokenUsage) {
         lhs = lhs + rhs
     }
+
+    /// 逐字段相减（用于按消息累计值求增量），结果不为负。
+    public static func - (lhs: TokenUsage, rhs: TokenUsage) -> TokenUsage {
+        TokenUsage(
+            input: max(0, lhs.input - rhs.input),
+            output: max(0, lhs.output - rhs.output),
+            cacheRead: max(0, lhs.cacheRead - rhs.cacheRead),
+            cacheWrite: max(0, lhs.cacheWrite - rhs.cacheWrite),
+            reasoning: max(0, lhs.reasoning - rhs.reasoning)
+        )
+    }
 }
 
 /// 一次 token 消耗事件（通常对应一次模型请求/一条会话记录）。

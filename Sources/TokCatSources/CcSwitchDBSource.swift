@@ -31,8 +31,13 @@ public final class CcSwitchDBSource: TokenSource {
         }
         guard let db else { return [] }
 
+        // 首次轮询从“当前时刻”开始，直接跳过查询以避免无谓的全表扫描。
         if cursorSeconds == nil {
-            cursorSeconds = startFromNow ? Int64(now.timeIntervalSince1970) : 0
+            if startFromNow {
+                cursorSeconds = Int64(now.timeIntervalSince1970)
+                return []
+            }
+            cursorSeconds = 0
         }
         let cursor = cursorSeconds ?? 0
 

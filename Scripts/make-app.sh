@@ -17,6 +17,13 @@ rm -rf "${APP}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${BIN}" "${APP}/Contents/MacOS/${PRODUCT}"
 
+# SPM 资源包（内置动画素材）需要放进 Contents/Resources，Bundle.module 才能找到
+for bundle in .build/"${CONFIG}"/*.bundle; do
+    [ -e "${bundle}" ] || continue
+    cp -R "${bundle}" "${APP}/Contents/Resources/"
+    echo "    拷贝资源包: $(basename "${bundle}")"
+done
+
 cat > "${APP}/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

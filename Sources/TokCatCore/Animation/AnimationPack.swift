@@ -14,13 +14,23 @@ public protocol AnimationPack: AnyObject {
     var frameCount: Int { get }
     /// 静止（速率为 0）时的帧率。
     var idleFPS: Double { get }
-    /// 满载时的最高帧率（用于限制功耗）。
+    /// 该动画推荐的最高帧率（实际以上限设置为准）。
     var maxFPS: Double { get }
-    /// 取指定帧的图像，`height` 为期望的渲染高度（点）。
-    func image(frameIndex: Int, height: CGFloat) -> NSImage?
+    /// 是否支持彩色渲染（单色素材返回 false）。
+    var supportsColor: Bool { get }
+
+    /// 取指定帧。
+    /// - Parameter template: true 输出模板图（仅 alpha，由系统着色）；false 保留原色。
+    func image(frameIndex: Int, height: CGFloat, template: Bool) -> NSImage?
 }
 
 public extension AnimationPack {
-    var idleFPS: Double { 1.5 }
-    var maxFPS: Double { 18 }
+    var idleFPS: Double { 2.0 }
+    var maxFPS: Double { 24 }
+    var supportsColor: Bool { false }
+
+    /// 默认按模板图取帧。
+    func image(frameIndex: Int, height: CGFloat) -> NSImage? {
+        image(frameIndex: frameIndex, height: height, template: true)
+    }
 }
