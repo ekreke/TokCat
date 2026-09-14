@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, "feat/**", "spike/**", "fix/**"]
   pull_request:
 
 concurrency:
@@ -26,6 +26,7 @@ jobs:
       - name: Surface build errors (annotations)
         if: failure()
         run: |
+          set +e
           block="$(grep -nE "error:" build-macos.log | head -40)"
           [ -n "$block" ] || block="$(tail -n 40 build-macos.log)"
           echo "::error::${block//$'\n'/%0A}"
@@ -48,11 +49,41 @@ jobs:
         with:
           swift-version: swift-6.1-release
           swift-build: 6.1-RELEASE
+          update-sdk-modules: true
       - name: Swift version
         run: swift --version
       - name: Build shared CLI (no Apple-only deps)
-        run: swift build --product TokCatCli
+        shell: bash
+        run: |
+          set +e
+          swift build --product TokCatCli 2>&1 | tee build-win.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            msg=$(grep -iE "error|cannot|undefined|not found|no such|unable" build-win.log | head -25 | tr '\n' '~')
+            echo "::error title=win-build::${msg}"
+          fi
+          exit $code
       - name: Test shared targets
-        run: swift test
+        if: success()
+        shell: bash
+        run: |
+          set +e
+          swift test 2>&1 | tee test-win.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            msg=$(grep -iE "error|cannot|undefined|not found|no such|unable|failed" test-win.log | head -25 | tr '\n' '~')
+            echo "::error title=win-test::${msg}"
+          fi
+          exit $code
       - name: Smoke test CLI dump
-        run: swift run TokCatCli dump
+        if: success()
+        shell: bash
+        run: |
+          set +e
+          swift run TokCatCli dump 2>&1 | tee dump-win.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 30 dump-win.log | tr '\n' '~')
+            echo "::error title=win-dump::${msg}"
+          fi
+          exit $code

@@ -12,9 +12,12 @@
 ## 安装
 
 ```bash
+brew trust --cask ekreke/tokcat/tokcat
 brew tap ekreke/tokcat https://github.com/ekreke/TokCat
 brew install --cask tokcat
 ```
+
+> Homebrew 7 起，非官方 tap 的 cask 需要先 `brew trust` 授权才能加载。上面的 `brew trust` 是首次安装的一次性步骤；因为本 tap 使用自定义 remote，必须带 `--cask`（按名字信任对自定义 remote 不生效）。
 
 升级 / 卸载：
 
