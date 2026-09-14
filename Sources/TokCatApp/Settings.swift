@@ -28,6 +28,19 @@ enum MetricKind: String, CaseIterable {
     }
 }
 
+/// Hermes 接入方式。
+enum HermesMode: String, CaseIterable {
+    case local
+    case remote
+
+    var displayName: String {
+        switch self {
+        case .local: return "本地"
+        case .remote: return "远程 (SSH)"
+        }
+    }
+}
+
 /// 用户偏好，基于 UserDefaults 持久化。
 final class AppSettings {
     private let defaults = UserDefaults.standard
@@ -40,9 +53,14 @@ final class AppSettings {
         static let sourceOverrides = "sourceOverrides"
         static let iconSize = "iconSize"
         static let maxFPS = "maxFPS"
-        static let agentPreset = "agentPreset"
-        static let customAgentCommand = "customAgentCommand"
+        static let hermesMode = "hermesMode"
         static let agentWorkingDirectory = "agentWorkingDirectory"
+        static let sshTarget = "sshTarget"
+        static let sshPort = "sshPort"
+        static let sshIdentityFile = "sshIdentityFile"
+        static let remoteCommand = "remoteCommand"
+        static let remoteLoginShell = "remoteLoginShell"
+        static let remoteWorkingDirectory = "remoteWorkingDirectory"
         static let chatWidth = "chatWidth"
         static let chatHeight = "chatHeight"
     }
@@ -95,21 +113,15 @@ final class AppSettings {
         TokenUnitConverter(metric: metricKind.makeMetric(), pricing: pricing)
     }
 
-    // MARK: - Chat / Agent 设置
+    // MARK: - Hermes 设置
 
-    /// 当前选中的 agent 预设 id。
-    var agentPresetId: String {
-        get { defaults.string(forKey: Key.agentPreset) ?? "hermes" }
-        set { defaults.set(newValue, forKey: Key.agentPreset) }
+    /// 本地 / 远程模式。
+    var hermesMode: HermesMode {
+        get { HermesMode(rawValue: defaults.string(forKey: Key.hermesMode) ?? "") ?? .local }
+        set { defaults.set(newValue.rawValue, forKey: Key.hermesMode) }
     }
 
-    /// 自定义 agent 命令（预设为 `custom` 时使用）。
-    var customAgentCommand: String {
-        get { defaults.string(forKey: Key.customAgentCommand) ?? "" }
-        set { defaults.set(newValue, forKey: Key.customAgentCommand) }
-    }
-
-    /// agent 工作目录。
+    /// 本地工作目录（本地模式）。
     var agentWorkingDirectory: String {
         get {
             let value = defaults.string(forKey: Key.agentWorkingDirectory) ?? ""
@@ -118,9 +130,52 @@ final class AppSettings {
         set { defaults.set(newValue, forKey: Key.agentWorkingDirectory) }
     }
 
-    /// 当前预设（找不到时回退 hermes）。
-    var agentPreset: AgentPreset {
-        AgentPreset.builtin(id: agentPresetId) ?? AgentPreset.builtin(id: "hermes")!
+    /// SSH 目标（`~/.ssh/config` 别名或 `user@host`）。
+    var sshTarget: String {
+        get { defaults.string(forKey: Key.sshTarget) ?? "" }
+        set { defaults.set(newValue, forKey: Key.sshTarget) }
+    }
+
+    /// SSH 端口（0 = 用默认/配置）。
+    var sshPort: Int {
+        get { defaults.integer(forKey: Key.sshPort) }
+        set { defaults.set(newValue, forKey: Key.sshPort) }
+    }
+
+    /// SSH 私钥路径（留空用默认/agent）。
+    var sshIdentityFile: String {
+        get { defaults.string(forKey: Key.sshIdentityFile) ?? "~/.ssh/id_ed25519" }
+        set { defaults.set(newValue, forKey: Key.sshIdentityFile) }
+    }
+
+    /// 远端启动命令。
+    var remoteCommand: String {
+        get { defaults.string(forKey: Key.remoteCommand) ?? "hermes acp" }
+        set { defaults.set(newValue, forKey: Key.remoteCommand) }
+    }
+
+    /// 远端登录 shell 包装（如 `zsh -lic`）；留空表示直接执行。
+    var remoteLoginShell: String {
+        get { defaults.string(forKey: Key.remoteLoginShell) ?? "" }
+        set { defaults.set(newValue, forKey: Key.remoteLoginShell) }
+    }
+
+    /// 远端工作目录（留空 = 远端 home）。
+    var remoteWorkingDirectory: String {
+        get { defaults.string(forKey: Key.remoteWorkingDirectory) ?? "" }
+        set { defaults.set(newValue, forKey: Key.remoteWorkingDirectory) }
+    }
+
+    /// 组装远程 SSH 配置。
+    var remoteSSHConfig: RemoteSSHConfig {
+        RemoteSSHConfig(
+            target: sshTarget,
+            port: sshPort > 0 ? sshPort : nil,
+            identityFile: sshIdentityFile.trimmingCharacters(in: .whitespaces).isEmpty ? nil : sshIdentityFile,
+            remoteCommand: remoteCommand.trimmingCharacters(in: .whitespaces).isEmpty ? "hermes acp" : remoteCommand,
+            loginShell: remoteLoginShell,
+            remoteWorkingDirectory: remoteWorkingDirectory
+        )
     }
 
     /// Chat 弹窗宽度（可拖动调整）。

@@ -50,6 +50,8 @@ final class TrendModel {
     private let chartPointBudget = 120
     /// 图例最多展示的客户端数，保证菜单高度稳定。
     private let maxLegendSeries = 4
+    /// 折线平滑窗口（秒）。仅影响显示，`合计/峰值` 仍用原始值。
+    private let smoothingSeconds = 15
 
     /// 立即更新口径名称（菜单下次打开时生效）。
     func setMetricName(_ name: String) {
@@ -102,6 +104,11 @@ final class TrendModel {
                 index = end
             }
 
+            // 对显示值做居中滑动平均，抹平突发流量的尖刺（统计不受影响）。
+            let window = max(1, Int((Double(smoothingSeconds) / Double(step)).rounded()))
+            let smoothed = TrendMath.movingAverage(points.map(\.value), window: window)
+            points = zip(points, smoothed).map { TrendPoint(date: $0.date, value: $1) }
+
             result.append(TrendChartData.Series(
                 id: sourceId,
                 name: sourceNames[sourceId] ?? sourceId,
@@ -113,23 +120,8 @@ final class TrendModel {
 
         result.sort { $0.subtotal > $1.subtotal }
         data.series = Array(result.prefix(maxLegendSeries))
-        data.yMax = Self.niceMax(data.series.flatMap { $0.points.map(\.value) }.max() ?? 0)
+        data.yMax = TrendMath.niceMax(data.series.flatMap { $0.points.map(\.value) }.max() ?? 0)
         return data
-    }
-
-    /// 把上限取整到 1 / 2 / 5 × 10^k，让 Y 轴刻度稳定好看。
-    static func niceMax(_ value: Double) -> Double {
-        guard value > 0 else { return 1 }
-        let exponent = floor(log10(value))
-        let base = value / pow(10, exponent)
-        let nice: Double
-        switch base {
-        case ...1: nice = 1
-        case ...2: nice = 2
-        case ...5: nice = 5
-        default: nice = 10
-        }
-        return nice * pow(10, exponent)
     }
 }
 
@@ -186,13 +178,27 @@ struct TrendChartView: View {
         Chart {
             ForEach(data.series) { series in
                 ForEach(series.points) { point in
+                    AreaMark(
+                        x: .value("时间", point.date),
+                        y: .value("消耗", point.value),
+                        series: .value("客户端", series.name)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [series.color.opacity(0.18), series.color.opacity(0.0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .interpolationMethod(.catmullRom)
+
                     LineMark(
                         x: .value("时间", point.date),
                         y: .value("消耗", point.value),
                         series: .value("客户端", series.name)
                     )
                     .foregroundStyle(series.color)
-                    .interpolationMethod(.monotone)
+                    .interpolationMethod(.catmullRom)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                 }
             }

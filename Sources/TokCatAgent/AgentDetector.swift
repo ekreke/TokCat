@@ -121,43 +121,40 @@ public enum AgentDetector {
         case missing
     }
 
-    /// 检测预设是否可用（解析到可执行文件）。
-    public static func status(for preset: AgentPreset, customCommand: String = "") -> Status {
-        guard let executable = executable(for: preset, customCommand: customCommand) else {
-            return .missing
-        }
-        if let path = ShellEnvironment.resolve(executable) {
+    /// 检测本地 Hermes 是否可用（解析到可执行文件）。
+    public static func localStatus() -> Status {
+        if let path = ShellEnvironment.resolve(AgentPreset.hermes.executable) {
             return .ready(path: path)
         }
         return .missing
     }
 
-    /// 组装启动配置；未找到可执行文件时返回 nil。
-    public static func launchConfiguration(
-        for preset: AgentPreset,
-        customCommand: String = "",
-        cwd: String
-    ) -> ACPLaunchConfiguration? {
-        guard let executable = executable(for: preset, customCommand: customCommand),
-              let path = ShellEnvironment.resolve(executable) else { return nil }
-        let arguments: [String]
-        if preset.id == AgentPreset.customID {
-            arguments = AgentPreset.parseCustomCommand(customCommand)?.arguments ?? []
-        } else {
-            arguments = preset.arguments
-        }
+    /// 本地启动配置；未找到可执行文件时返回 nil。
+    public static func localLaunchConfiguration(cwd: String) -> ACPLaunchConfiguration? {
+        guard let path = ShellEnvironment.resolve(AgentPreset.hermes.executable) else { return nil }
         return ACPLaunchConfiguration(
             executablePath: path,
-            arguments: arguments,
+            arguments: AgentPreset.hermes.arguments,
             cwd: cwd,
             environment: ShellEnvironment.childEnvironment()
         )
     }
 
-    private static func executable(for preset: AgentPreset, customCommand: String) -> String? {
-        if preset.id == AgentPreset.customID {
-            return AgentPreset.parseCustomCommand(customCommand)?.executable
+    /// 远程（SSH）启动配置：`ssh <target> "<remote command>"`，`session/new` 用远端工作目录。
+    public static func remoteLaunchConfiguration(
+        _ config: RemoteSSHConfig,
+        localCWD: String
+    ) -> ACPLaunchConfiguration? {
+        guard config.isConfigured,
+              FileManager.default.isExecutableFile(atPath: SSHCommandBuilder.sshExecutable) else {
+            return nil
         }
-        return preset.executable
+        return ACPLaunchConfiguration(
+            executablePath: SSHCommandBuilder.sshExecutable,
+            arguments: SSHCommandBuilder.arguments(config, command: config.remoteCommand),
+            cwd: localCWD,
+            sessionCWD: config.remoteWorkingDirectory,
+            environment: ShellEnvironment.childEnvironment()
+        )
     }
 }

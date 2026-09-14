@@ -105,7 +105,7 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                     // 版本不一致不致命，仅记录；继续尝试。
                     NSLog("TokCat: ACP 协议版本不一致 agent=\(initialized.protocolVersion ?? -1)")
                 }
-                guard let session = try? await client.newSession(cwd: configuration.cwd) else {
+                guard let session = try? await client.newSession(cwd: configuration.sessionCWD) else {
                     throw ACPClientError.invalidResponse("session/new 无 sessionId")
                 }
                 // 期间可能已被替换/关闭，避免覆盖新状态。

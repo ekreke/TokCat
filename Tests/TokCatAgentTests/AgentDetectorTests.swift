@@ -8,36 +8,39 @@ final class AgentDetectorTests: XCTestCase {
         XCTAssertNotNil(ShellEnvironment.resolve("ls"))
     }
 
-    func testParseCustomCommandWithQuotes() {
-        let parsed = AgentPreset.parseCustomCommand("npx --yes \"@zed-industries/claude-agent-acp\"")
-        XCTAssertEqual(parsed?.executable, "npx")
-        XCTAssertEqual(parsed?.arguments, ["--yes", "@zed-industries/claude-agent-acp"])
-        XCTAssertNil(AgentPreset.parseCustomCommand("   "))
+    func testHermesPreset() {
+        XCTAssertEqual(AgentPreset.hermes.executable, "hermes")
+        XCTAssertEqual(AgentPreset.hermes.arguments, ["acp"])
+        XCTAssertEqual(AgentPreset.hermes.id, "hermes")
     }
 
-    func testBuiltinPresetLookup() {
-        XCTAssertEqual(AgentPreset.builtin(id: "hermes")?.arguments, ["acp"])
-        XCTAssertEqual(AgentPreset.builtin(id: "gemini")?.arguments, ["--acp"])
-        XCTAssertNil(AgentPreset.builtin(id: "does-not-exist"))
+    func testLocalStatusShape() {
+        // 只验证返回的是两种合法状态之一（依赖本机是否装了 hermes）。
+        switch AgentDetector.localStatus() {
+        case let .ready(path):
+            XCTAssertFalse(path.isEmpty)
+        case .missing:
+            break
+        }
     }
 
-    func testLaunchConfigurationForResolvableCustomCommand() throws {
-        let configuration = AgentDetector.launchConfiguration(
-            for: AgentPreset.builtin(id: AgentPreset.customID)!,
-            customCommand: "/bin/echo hello",
-            cwd: NSTemporaryDirectory()
-        )
-        XCTAssertEqual(configuration?.executablePath, "/bin/echo")
-        XCTAssertEqual(configuration?.arguments, ["hello"])
-        XCTAssertNotNil(configuration?.environment?["PATH"])
+    func testRemoteLaunchConfiguration() {
+        let remote = RemoteSSHConfig(target: "be-tools")
+        let config = AgentDetector.remoteLaunchConfiguration(remote, localCWD: NSTemporaryDirectory())
+        XCTAssertEqual(config?.executablePath, "/usr/bin/ssh")
+        XCTAssertEqual(config?.arguments.last, "hermes acp")
+        XCTAssertEqual(config?.sessionCWD, NSTemporaryDirectory())
     }
 
-    func testLaunchConfigurationMissingBinary() {
-        let configuration = AgentDetector.launchConfiguration(
-            for: AgentPreset.builtin(id: AgentPreset.customID)!,
-            customCommand: "/definitely/not/here acp",
-            cwd: NSTemporaryDirectory()
-        )
-        XCTAssertNil(configuration)
+    func testRemoteLaunchConfigurationRequiresTarget() {
+        let remote = RemoteSSHConfig(target: "  ")
+        XCTAssertNil(AgentDetector.remoteLaunchConfiguration(remote, localCWD: NSTemporaryDirectory()))
+    }
+
+    func testLocalLaunchConfigurationCwd() {
+        guard let config = AgentDetector.localLaunchConfiguration(cwd: "/tmp") else {
+            return // 本机未装 hermes 时跳过
+        }
+        XCTAssertEqual(config.sessionCWD, "/tmp")
     }
 }

@@ -25,9 +25,9 @@ make highlightcheck  # 验证 Highlight.js 资源可加载（主题/语言/示�
 
 - 通过 **ACP** 与本地 agent 通信：`initialize` → `session/new` → `session/prompt`，流式接收 `session/update`（正文 / 思考 / 工具 / 计划）。
 - **常驻会话**：首次打开才连接（首次约 1–2s，之后秒开），关闭弹窗**不结束**会话，重开继续上次对话；空闲 1 小时才回收进程。
-- 弹窗内可多轮追问，**只显示最新回答**；换 Agent / 改目录 / 菜单「断开 Agent」会重连。
+- 弹窗内可多轮追问，**只显示最新回答**；切换本地/远程 / 改目录 / 菜单「断开 Agent」会重连。
 - 危险命令会弹出**授权条**（允许一次 / 允许会话 / 拒绝），对应 ACP 的 `session/request_permission`。
-- 未安装 agent 时展示失败提示，点「设置」进入「Agent 检测 / 一键安装」窗口。
+- 目前只接 **Hermes**（本地或远程）。未连接时点「设置」进入「Hermes 设置」窗口。
 - 回答以 **Markdown 渲染**（[MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui)）：标题 / 列表 / 引用 / 表格 / 链接 / 代码块；代码块用 [Highlight.js](https://highlightjs.org)（HighlighterSwift）做**语法高亮**（约 192 种语言，浅/深色自动切主题）。
 - 流式期间按 **150ms 节流**重解析 Markdown，并把高亮结果按「语言 + 源码」缓存，避免逐 token 卡顿。
 - 弹窗尺寸可用右下角**拖拽手柄**调整，并记住上次大小（340×360 ~ 900×900）。
@@ -38,13 +38,13 @@ make highlightcheck  # 验证 Highlight.js 资源可加载（主题/语言/示�
 - 固定展示**最近 5 分钟**；顶部一行统计：**当前速率 / 合计 / 峰值**。
 - 打开菜单时取一次**快照渲染**并冻结 Y 轴上限，菜单打开期间不重绘，避免折线抖动。
 - 单位缩写用 `t`（如 `1.23K t/s`、`1.23K t`）；金额口径为 `$/s`、`$`。
-- 数据按秒记录（窗口 600s）；图表按范围降采样（≤~120 点/条）保证流畅，统计仍按 1 秒。
+- 数据按秒记录（窗口 600s）；图表按范围降采样（≤~120 点/条）并做 **15s 居中滑动平均**平滑 + `catmullRom` 插值，抹平突发毛刺（`合计/峰值` 仍按 1 秒原始值）。
 - 随全局「速率口径」设置变化（加权 / 全部 / 仅 input+output / 金额）。
 
 ## 菜单（右键）
 
 - **趋势图**：顶部内嵌最近 5 分钟消耗折线 + 速率/合计/峰值。
-- **Agent**：选择预设（Hermes / OpenCode / Gemini CLI / 自定义命令），「安装 / 重新检测…」，「断开 Agent」。
+- **Hermes**：本地 / 远程(SSH) 切换，「设置…」，「断开 Agent」。
 - **动画**：选择动画包；子菜单底部含「重新扫描动画目录」「打开动画目录」。
 - **速率口径**：加权 token / 全部 token / 仅 input+output / 金额（USD，models.dev 定价）。
 - **尺寸**：16 / 18 / 20 / 22 / 24 pt。
@@ -127,22 +127,39 @@ TokenSource.poll() ─► RateAggregator ─► RateCalculator (1 Hz)
 
 - 菜单「动画 → 重新扫描动画目录」即可加载。单色素材会自动用模板图渲染，适配浅/深菜单栏。
 
-## Agent 接入（ACP）
+## Hermes 接入（ACP）
 
 左键 Chat 使用 [Agent Client Protocol](https://agentclientprotocol.com)：TokCat 作为 **Client**，
-以子进程方式启动 agent 并按行分隔 JSON-RPC 2.0 通信。内置预设（右键菜单「Agent」）：
+以子进程方式启动 Hermes 并按行分隔 JSON-RPC 2.0 通信。目前只接 **Hermes**，支持本地与远程两种模式。
 
-| 预设 | 启动命令 | 一键安装 | 登录 |
-|---|---|---|---|
-| Hermes | `hermes acp` | `curl -fsSL https://hermes-agent.nousresearch.com/install.sh \| bash` | `hermes acp --setup` |
-| OpenCode | `opencode acp` | `brew install anomalyco/tap/opencode` | `opencode auth login` |
-| Gemini CLI | `gemini --acp` | `brew install gemini-cli` | `gemini` |
-| 自定义 | 用户填写 | — | — |
+### 本地
 
-- **检测**：GUI 应用 PATH 极简，TokCat 用登入 shell（`zsh -lic`）解析真实 PATH，再在候选目录里查找可执行文件。
-- **一键安装 / 检测窗口**：右键菜单「Agent → 安装 / 重新检测…」，安装命令实时输出日志，装完自动重新检测。
-- 客户端**不声明** fs / terminal 能力，agent 使用自带工具；仅处理 `session/request_permission`（危险命令授权）。
-- 默认工作目录为主目录，可在设置中调整；自定义命令保存在 UserDefaults。
+- 右键菜单「Hermes → 本地」，或用「设置…」里的本地区：一键安装 / 登录 / 文档 / 重新检测。
+- 安装：`curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash`；登录：`hermes acp --setup`。
+
+### 远程（SSH）
+
+无需暴露端口，直接把远端的 `hermes acp` 的 stdio 通过 SSH 转到本地：
+
+```
+ssh -T -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+    [-p <port>] [-i <identity>] <target> "<remote command>"
+```
+
+「设置…」里可配：
+
+| 字段 | 说明 |
+|---|---|
+| SSH 目标 | `user@host` 或 `~/.ssh/config` 别名（如 `be-tools`） |
+| 端口 / 私钥 | 留空用默认；建议显式填私钥（GUI 可能没有 `SSH_AUTH_SOCK`） |
+| 远程命令 | 默认 `hermes acp` |
+| 登录 shell 包装 | 非交互 SSH 的 PATH 不含 hermes 时填，如 `bash -lc` / `zsh -lic` |
+| 远程工作目录 | 传给 `session/new` 的远端 cwd；留空 = 远端 home |
+
+「测试连接」会运行 `ssh <目标> "hermes acp --check"` 验证网络与 PATH。
+
+- 客户端**不声明** fs / terminal 能力，Hermes 使用自带工具；仅处理 `session/request_permission`（危险命令授权）。
+- 检测与 SSH 测试都在后台线程执行，菜单读缓存，避免阻塞。
 - 门控集成测试：`TOKCAT_HERMES_IT=1 swift test` 会用真实 hermes 跑握手与 prompt 往返。
 
 ### 让 Hermes 使用自定义 OpenAI 兼容端点（示例：power）

@@ -16,11 +16,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     private let trendModel = TrendModel()
     private lazy var chat = ChatPopoverController(settings: settings)
-    private lazy var agentSetup = AgentSetupController(settings: settings)
+    private lazy var hermesSettings = HermesSettingsController(settings: settings) { [weak self] in
+        self?.chat.shutdown()
+    }
 
     private var trendChartHosting: NSHostingView<TrendChartView>?
     private lazy var trendChartItem = makeTrendChartItem()
-    private var agentStatusCache: [String: AgentDetector.Status] = [:]
+    private var localHermesPath: String?
 
     private var frameTimer: Timer?
     private var frameIndex = 0
@@ -71,14 +73,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
-        chat.setSetupHandler { [weak self] in self?.agentSetup.show() }
+        chat.setSetupHandler { [weak self] in self?.hermesSettings.show() }
 
         // 预热：提前建好 Chat 弹窗与趋势图 hosting view，并后台解析 Agent 状态，
         // 避免第一次点击时才在主线程做这些耗时工作。
         _ = chat
         _ = trendChartItem
         DispatchQueue.global(qos: .utility).async { _ = ShellEnvironment.loginPath() }
-        refreshAgentStatusInBackground()
+        refreshHermesStatusInBackground()
 
         renderFrame()
         engine.start()
@@ -184,14 +186,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
 
         // 后台刷新 Agent 检测缓存（安装后菜单能反映最新状态），菜单本身读缓存不阻塞。
-        refreshAgentStatusInBackground()
+        refreshHermesStatusInBackground()
 
         refreshTrendChart()
         menu.addItem(trendChartItem)
 
         menu.addItem(.separator())
 
-        menu.addItem(agentMenu())
+        menu.addItem(hermesMenu())
         menu.addItem(animationMenu())
         menu.addItem(metricMenu())
         menu.addItem(sizeMenu())
@@ -236,45 +238,47 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         hosting.frame = NSRect(x: 0, y: 0, width: 340, height: height)
     }
 
-    private func agentMenu() -> NSMenuItem {
-        let parent = NSMenuItem(title: "Agent", action: nil, keyEquivalent: "")
+    private func hermesMenu() -> NSMenuItem {
+        let parent = NSMenuItem(title: "Hermes", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
-        for preset in AgentPreset.builtins {
-            let suffix: String
-            switch agentStatusCache[preset.id] {
-            case .ready:
-                suffix = ""
-            case .missing:
-                suffix = preset.id == AgentPreset.customID ? "" : "（未安装）"
-            case nil:
-                suffix = ""
-            }
-            let entry = NSMenuItem(
-                title: "\(preset.displayName)\(suffix)",
-                action: #selector(selectAgent(_:)),
-                keyEquivalent: ""
-            )
+
+        for mode in HermesMode.allCases {
+            let entry = NSMenuItem(title: mode.displayName, action: #selector(selectHermesMode(_:)), keyEquivalent: "")
             entry.target = self
-            entry.representedObject = preset.id
-            entry.state = preset.id == settings.agentPresetId ? .on : .off
+            entry.representedObject = mode.rawValue
+            entry.state = mode == settings.hermesMode ? .on : .off
             submenu.addItem(entry)
         }
+        let detail = NSMenuItem(title: hermesDetail(), action: nil, keyEquivalent: "")
+        detail.isEnabled = false
+        submenu.addItem(detail)
+
         submenu.addItem(.separator())
-        submenu.addItem(item("安装 / 重新检测…", #selector(openAgentSetup)))
+        submenu.addItem(item("设置…", #selector(openHermesSettings)))
         submenu.addItem(item("断开 Agent", #selector(disconnectAgent)))
         parent.submenu = submenu
         return parent
     }
 
-    /// 后台预热/刷新 agent 检测结果，菜单读取缓存避免触发 shell。
-    private func refreshAgentStatusInBackground() {
-        let command = settings.customAgentCommand
+    private func hermesDetail() -> String {
+        switch settings.hermesMode {
+        case .local:
+            return localHermesPath != nil ? "已检测到本地 hermes" : "本地未安装"
+        case .remote:
+            let target = settings.sshTarget.trimmingCharacters(in: .whitespaces)
+            return target.isEmpty ? "未配置 SSH 目标" : "SSH: \(target)"
+        }
+    }
+
+    /// 后台刷新本地 hermes 检测结果，菜单读取缓存避免触发 shell。
+    private func refreshHermesStatusInBackground() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            var cache: [String: AgentDetector.Status] = [:]
-            for preset in AgentPreset.builtins {
-                cache[preset.id] = AgentDetector.status(for: preset, customCommand: command)
+            let path: String?
+            switch AgentDetector.localStatus() {
+            case let .ready(value): path = value
+            case .missing: path = nil
             }
-            DispatchQueue.main.async { self?.agentStatusCache = cache }
+            DispatchQueue.main.async { self?.localHermesPath = path }
         }
     }
 
@@ -282,36 +286,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         chat.shutdown()
     }
 
-    @objc private func selectAgent(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        if id == AgentPreset.customID {
-            promptForCustomCommand()
-            return
-        }
-        settings.agentPresetId = id
-        chat.close()
+    @objc private func selectHermesMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let mode = HermesMode(rawValue: raw) else { return }
+        settings.hermesMode = mode
+        chat.shutdown()
     }
 
-    private func promptForCustomCommand() {
-        let alert = NSAlert()
-        alert.messageText = "自定义 Agent 命令"
-        alert.informativeText = "填写启动 ACP 的完整命令，例如 npx @zed-industries/claude-agent-acp"
-        alert.addButton(withTitle: "保存")
-        alert.addButton(withTitle: "取消")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        field.stringValue = settings.customAgentCommand
-        field.placeholderString = "命令 参数…"
-        alert.accessoryView = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let command = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty else { return }
-        settings.customAgentCommand = command
-        settings.agentPresetId = AgentPreset.customID
-        chat.close()
-    }
-
-    @objc private func openAgentSetup() {
-        agentSetup.show()
+    @objc private func openHermesSettings() {
+        hermesSettings.show()
     }
 
     private func animationMenu() -> NSMenuItem {

@@ -82,8 +82,7 @@ final class ACPClientIntegrationTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["TOKCAT_HERMES_IT"] == "1" else {
             throw XCTSkip("设置 TOKCAT_HERMES_IT=1 才运行真实 hermes 集成测试")
         }
-        guard let preset = AgentPreset.builtin(id: "hermes"),
-              let configuration = AgentDetector.launchConfiguration(for: preset, cwd: NSTemporaryDirectory()) else {
+        guard let configuration = AgentDetector.localLaunchConfiguration(cwd: NSTemporaryDirectory()) else {
             throw XCTSkip("未检测到 hermes 可执行文件")
         }
         let client = ACPClient(configuration: configuration)
@@ -108,8 +107,7 @@ final class ACPClientIntegrationTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["TOKCAT_HERMES_IT"] == "1" else {
             throw XCTSkip("设置 TOKCAT_HERMES_IT=1 才运行真实 hermes 集成测试")
         }
-        guard let preset = AgentPreset.builtin(id: "hermes"),
-              let configuration = AgentDetector.launchConfiguration(for: preset, cwd: NSTemporaryDirectory()) else {
+        guard let configuration = AgentDetector.localLaunchConfiguration(cwd: NSTemporaryDirectory()) else {
             throw XCTSkip("未检测到 hermes 可执行文件")
         }
         let client = ACPClient(configuration: configuration)

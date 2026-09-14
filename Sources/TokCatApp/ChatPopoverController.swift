@@ -78,24 +78,33 @@ final class ChatPopoverController: NSObject, NSPopoverDelegate {
     }
 
     private func connect() {
-        let preset = settings.agentPreset
-        let customCommand = settings.customAgentCommand
-        let cwd = settings.agentWorkingDirectory
+        let mode = settings.hermesMode
+        let localCWD = settings.agentWorkingDirectory
+        let remote = settings.remoteSSHConfig
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let configuration = AgentDetector.launchConfiguration(
-                for: preset,
-                customCommand: customCommand,
-                cwd: cwd
-            )
+            let configuration: ACPLaunchConfiguration?
+            let displayName: String
+            switch mode {
+            case .local:
+                configuration = AgentDetector.localLaunchConfiguration(cwd: localCWD)
+                displayName = "Hermes"
+            case .remote:
+                configuration = AgentDetector.remoteLaunchConfiguration(remote, localCWD: localCWD)
+                displayName = "Hermes · \(remote.target)"
+            }
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let configuration {
-                    self.model.ensureSession(configuration: configuration, displayName: preset.displayName)
+                    self.model.ensureSession(configuration: configuration, displayName: displayName)
                 } else {
-                    self.model.reportUnavailable(
-                        displayName: preset.displayName,
-                        message: "未检测到 \(preset.displayName) 可执行文件，请在右键菜单「Agent」里安装或配置。"
-                    )
+                    let message: String
+                    switch mode {
+                    case .local:
+                        message = "未检测到本地 hermes 可执行文件，请点「设置」安装或改用手动路径。"
+                    case .remote:
+                        message = "请先在「设置」里填写远程 Hermes 的 SSH 目标。"
+                    }
+                    self.model.reportUnavailable(displayName: displayName, message: message)
                 }
             }
         }

@@ -26,13 +26,27 @@ public enum ACPClientError: Error, LocalizedError {
 public struct ACPLaunchConfiguration: Equatable, Sendable {
     public var executablePath: String
     public var arguments: [String]
+    /// 进程启动目录（本地）。
     public var cwd: String
+    /// 传给 `session/new` 的工作目录（远程模式下是远端路径）。默认等于 `cwd`。
+    public var sessionCWD: String
     public var environment: [String: String]?
 
-    public init(executablePath: String, arguments: [String], cwd: String, environment: [String: String]? = nil) {
+    public init(
+        executablePath: String,
+        arguments: [String],
+        cwd: String,
+        sessionCWD: String? = nil,
+        environment: [String: String]? = nil
+    ) {
         self.executablePath = executablePath
         self.arguments = arguments
         self.cwd = cwd
+        if let sessionCWD, !sessionCWD.isEmpty {
+            self.sessionCWD = sessionCWD
+        } else {
+            self.sessionCWD = cwd
+        }
         self.environment = environment
     }
 }
