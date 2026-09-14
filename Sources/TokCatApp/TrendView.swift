@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import TokCatCore
+import TokCatEngine
 
 /// 趋势图上的一个数据点。
 struct TrendPoint: Identifiable, Equatable {

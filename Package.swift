@@ -30,9 +30,10 @@ var targets: [Target] = [
     .target(name: "TokCatCore"),
     .target(name: "TokCatSources", dependencies: ["TokCatCore"] + sqliteDependency),
     .target(name: "TokCatAgent", dependencies: ["TokCatCore"]),
+    .target(name: "TokCatEngine", dependencies: ["TokCatCore", "TokCatSources"]),
     .executableTarget(
         name: "TokCatCli",
-        dependencies: ["TokCatCore", "TokCatSources", "TokCatAgent"]
+        dependencies: ["TokCatCore", "TokCatSources", "TokCatAgent", "TokCatEngine"]
     ),
     .testTarget(name: "TokCatCoreTests", dependencies: ["TokCatCore"]),
     .testTarget(name: "TokCatSourcesTests", dependencies: ["TokCatSources", "TokCatCore"] + sqliteDependency),
@@ -55,6 +56,7 @@ targets.append(
             "TokCatCore",
             "TokCatSources",
             "TokCatAgent",
+            "TokCatEngine",
             .product(name: "MarkdownUI", package: "swift-markdown-ui"),
             .product(name: "Highlighter", package: "HighlighterSwift"),
         ],
