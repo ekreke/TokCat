@@ -6,8 +6,36 @@
 - **左键点图标**：弹出 **Chat** —— 通过 [ACP (Agent Client Protocol)](https://agentclientprotocol.com) 与本地 agent 单次会话，流式回答、可多轮追问（只显示最新回答）。
 - **右键点图标**：弹出菜单，顶部内嵌「最近 1 / 5 / 10 分钟」消耗趋势图。
 - 采集源可插拔：opencode / Claude Code / Codex / pi，以及可选的 cc-switch 聚合库。
-- Agent 可插拔：内置 Hermes / OpenCode / Gemini CLI 预设 + 自定义 ACP 命令，支持**检测与一键安装**。
+- 接入 **Hermes**（本地 / 远程 SSH，见 [Hermes 接入](#hermes-接入acp)）。
 - 动画可插拔：内置 RunCat 精灵图 + 外部 PNG 序列动画包。
+
+## 安装
+
+```bash
+brew tap ekreke/tokcat https://github.com/ekreke/TokCat
+brew install --cask tokcat
+```
+
+升级 / 卸载：
+
+```bash
+brew upgrade --cask tokcat
+brew uninstall --cask tokcat
+```
+
+> TokCat 为 **ad-hoc 签名（未公证）**，仅支持 **Apple Silicon (arm64)**。
+> Homebrew 安装一般不带 quarantine，可直接打开；若从 Releases 下载 DMG 后被拦截：
+> 右键 App →「打开」，或到「系统设置 → 隐私与安全性 → 仍要打开」（macOS 15+）。
+
+<details>
+<summary>从源码构建（不使用 Homebrew）</summary>
+
+```bash
+git clone https://github.com/ekreke/TokCat.git
+cd TokCat && make app
+open build/TokCat.app
+```
+</details>
 
 ## 运行
 
@@ -15,6 +43,7 @@
 make run        # 开发模式直接运行（swift run，菜单栏出现猫）
 make test       # 运行单元测试
 make app        # 打包为 build/TokCat.app（无 Dock 图标，ad-hoc 签名）
+make dmg        # 打包为 build/TokCat-<version>.dmg（拖拽安装）
 make dump        # 一次性扫描所有采集源并打印统计（验证/排障）
 make highlightcheck  # 验证 Highlight.js 资源可加载（主题/语言/示例高亮）
 ```
@@ -199,6 +228,23 @@ providers:
 
 优先读取 cc-switch 同步的 models.dev 快照 `~/.cc-switch/model-pricing.json`，不存在时回退读取 `cc-switch.db` 的 `model_pricing` 表。模型名做了归一化（大小写、`-free`/`-latest`、日期后缀等）。未命中定价的模型按 0 计。菜单「重载模型定价」可刷新。
 
+## 发布
+
+推一个 `v*` tag 即触发 CI（`.github/workflows/release.yml`）：构建 arm64 DMG → 发 GitHub Release → 回写 `Casks/tokcat.rb` 的 `version` / `sha256` 到 `main`。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+本地手动打包（产物 `build/TokCat-<version>.dmg`）：
+
+```bash
+VERSION=0.1.0 make dmg
+```
+
+签名策略：无证书时用 ad-hoc（未公证）；若本机存在 `Developer ID Application` 证书，脚本会自动改用 hardened runtime 签名；设置 `NOTARY_PROFILE`（`xcrun notarytool store-credentials` 创建）后会自动公证。
+
 ## 许可
 
 本项目以 **Apache-2.0** 发布，见 `LICENSE`。
@@ -212,7 +258,7 @@ providers:
 - 「模拟数据」源与真实源共用同一套接口，默认关闭。
 - 趋势历史仅在内存中保留最近 5 分钟，重启后清空。
 - 金额口径依赖本地定价快照，不联网。
-- 设置目前以菜单形式提供；后续可替换为独立 SwiftUI 设置窗口。
+- 设置以「Hermes 设置」窗口（SwiftUI）提供。
 - 采集器对日志格式变化采取“无法识别则跳过”的容错策略。
-- Chat 仅对接实现 ACP 的 agent；Claude Code / Codex / Pi 需先安装各自的 ACP adapter（可填入「自定义命令」）。
+- Chat 仅对接实现 ACP 的 **Hermes**（本地或远程 SSH）。
 - 未配置推理 provider 时，agent 的 `session/new` 会失败；TokCat 会展示 agent 返回的错误，按提示完成登录即可。

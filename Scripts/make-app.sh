@@ -9,6 +9,13 @@ PRODUCT="TokCat"
 BIN=".build/${CONFIG}/${PRODUCT}"
 APP="build/${PRODUCT}.app"
 
+# 版本：VERSION 环境变量 > 最近 git tag（去掉前缀 v）> 0.1.0
+TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+VERSION="${VERSION:-${TAG#v}}"
+VERSION="${VERSION:-0.1.0}"
+BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
+echo "==> 版本 ${VERSION} (build ${BUILD_NUMBER})"
+
 echo "==> swift build -c ${CONFIG}"
 swift build -c "${CONFIG}" --product "${PRODUCT}"
 
@@ -24,7 +31,7 @@ for bundle in .build/"${CONFIG}"/*.bundle; do
     echo "    拷贝资源包: $(basename "${bundle}")"
 done
 
-cat > "${APP}/Contents/Info.plist" <<'PLIST'
+cat > "${APP}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -40,9 +47,9 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUMBER}</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
@@ -53,9 +60,18 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-# ad-hoc 签名（开机自启 SMAppService 需要已签名）
-codesign --force --deep --sign - "${APP}" >/dev/null 2>&1 || \
-    echo "警告: codesign 失败，开机自启可能不可用"
+# 签名：优先用 Developer ID（公证前提，带 hardened runtime），否则退回 ad-hoc
+# （开机自启 SMAppService 需要已签名）。
+IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
+    | sed -n 's/.*"\(Developer ID Application[^"]*\)".*/\1/p' | head -1)}"
+if [ -n "${IDENTITY}" ]; then
+    echo "==> 签名（Developer ID）: ${IDENTITY}"
+    codesign --force --deep --options runtime --timestamp --sign "${IDENTITY}" "${APP}"
+else
+    echo "==> 签名（ad-hoc，未公证）"
+    codesign --force --deep --sign - "${APP}" >/dev/null 2>&1 || \
+        echo "警告: codesign 失败，开机自启可能不可用"
+fi
 
 echo "==> 完成: ${APP}"
 echo "    运行: open ${APP}"

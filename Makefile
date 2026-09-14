@@ -1,4 +1,4 @@
-.PHONY: build release test run app dump highlightcheck clean
+.PHONY: build release test run app dmg dump highlightcheck clean
 
 build:
 	swift build
@@ -14,6 +14,9 @@ run:
 
 app:
 	./Scripts/make-app.sh release
+
+dmg:
+	./Scripts/make-dmg.sh
 
 dump:
 	swift run TokCat dump
