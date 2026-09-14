@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # macOS：完整构建（含 AppKit/SwiftUI 外壳与测试）。
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build all
+        run: swift build
+      - name: Test
+        run: swift test
+
+  # Windows：验证共享层（Core/Sources/Agent）与常驻 CLI 的跨平台编译可行性（Spike A/F）。
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Swift (Windows)
+        uses: compnerd/gha-setup-swift@main
+        with:
+          swift-version: swift-6.1-release
+          swift-build: 6.1-RELEASE
+      - name: Swift version
+        run: swift --version
+      - name: Build shared CLI (no Apple-only deps)
+        run: swift build --product TokCatCli
+      - name: Test shared targets
+        run: swift test
+      - name: Smoke test CLI dump
+        run: swift run TokCatCli dump

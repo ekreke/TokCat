@@ -15,6 +15,7 @@ final class SSHCommandBuilderTests: XCTestCase {
         ])
     }
 
+    #if canImport(Darwin)
     func testPortAndIdentityFile() {
         let config = RemoteSSHConfig(target: "root@10.0.0.1", port: 2222, identityFile: "~/.ssh/id_ed25519")
         let args = SSHCommandBuilder.arguments(config, command: "hermes acp")
@@ -25,6 +26,7 @@ final class SSHCommandBuilderTests: XCTestCase {
         XCTAssertTrue(args.contains("\(NSHomeDirectory())/.ssh/id_ed25519"))
         XCTAssertEqual(args.last, "hermes acp")
     }
+    #endif
 
     func testLoginShellWrapping() {
         let config = RemoteSSHConfig(target: "h", identityFile: nil, remoteCommand: "hermes acp", loginShell: "zsh -lic")
@@ -44,6 +46,7 @@ final class SSHCommandBuilderTests: XCTestCase {
         XCTAssertEqual(SSHCommandBuilder.singleQuote("plain"), "'plain'")
     }
 
+    #if canImport(Darwin)
     func testShellCommandContainsQuotedSsh() {
         let config = RemoteSSHConfig(target: "be-tools", identityFile: nil, remoteCommand: "hermes acp")
         let command = SSHCommandBuilder.shellCommand(config, command: "hermes acp --check")
@@ -51,4 +54,5 @@ final class SSHCommandBuilderTests: XCTestCase {
         XCTAssertTrue(command.contains("'be-tools'"))
         XCTAssertTrue(command.contains("'hermes acp --check'"))
     }
+    #endif
 }

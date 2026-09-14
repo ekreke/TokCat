@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 /// 位图缩放工具：用于把像素风素材按最近邻放大，保持硬边不糊。
@@ -43,3 +44,4 @@ public enum PixelScaling {
         return result
     }
 }
+#endif

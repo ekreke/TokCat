@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 /// 可插拔动画包：提供一个可循环播放的帧序列。
@@ -5,17 +6,13 @@ import AppKit
 /// 实现者只需给出帧数量与按帧索引取图的方法，速率到帧率的映射由
 /// `AnimationSpeedMapper` 统一负责，因此新增动画（猫/狗/任意序列）
 /// 无需改动引擎。
-public protocol AnimationPack: AnyObject {
+public protocol AnimationPack: AnimationTiming {
     /// 唯一标识，用于持久化用户选择。
     var identifier: String { get }
     /// 展示名称。
     var displayName: String { get }
     /// 帧总数（循环播放）。
     var frameCount: Int { get }
-    /// 静止（速率为 0）时的帧率。
-    var idleFPS: Double { get }
-    /// 该动画推荐的最高帧率（实际以上限设置为准）。
-    var maxFPS: Double { get }
     /// 是否支持彩色渲染（单色素材返回 false）。
     var supportsColor: Bool { get }
 
@@ -34,3 +31,4 @@ public extension AnimationPack {
         image(frameIndex: frameIndex, height: height, template: true)
     }
 }
+#endif

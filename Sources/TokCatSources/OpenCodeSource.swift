@@ -1,5 +1,4 @@
 import Foundation
-import Darwin
 import TokCatCore
 
 /// opencode 采集源：只读轮询 SQLite `message` 表。
@@ -163,9 +162,8 @@ public final class OpenCodeSource: TokenSource {
     private func databaseSignature() -> String? {
         var signature = ""
         for file in [path, path + "-wal"] {
-            var info = stat()
-            guard file.withCString({ stat($0, &info) }) == 0 else { return nil }
-            signature += "\(info.st_mtimespec.tv_sec).\(info.st_mtimespec.tv_nsec):\(info.st_size)|"
+            guard let info = FileStat(path: file) else { return nil }
+            signature += info.signature + "|"
         }
         return signature
     }
