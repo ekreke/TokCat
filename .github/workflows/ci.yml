@@ -23,21 +23,28 @@ jobs:
         run: |
           set -o pipefail
           swift build 2>&1 | tee build-macos.log
-      - name: Surface build errors (annotations)
+      - name: Test
+        if: success()
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee test-macos.log
+      - name: Surface errors (annotations)
         if: failure()
+        shell: bash
         run: |
           set +e
-          block="$(grep -nE "error:" build-macos.log | head -40)"
-          [ -n "$block" ] || block="$(tail -n 40 build-macos.log)"
+          block="$(cat build-macos.log test-macos.log 2>/dev/null | grep -nE "error:|failed|Fatal|Signal|Assertion|Crash" | head -40)"
+          [ -n "$block" ] || block="$(tail -n 80 build-macos.log test-macos.log 2>/dev/null)"
           echo "::error::${block//$'\n'/%0A}"
-      - name: Upload build log
+          exit 0
+      - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build-log
-          path: build-macos.log
-      - name: Test
-        run: swift test
+          name: macos-logs
+          path: |
+            build-macos.log
+            test-macos.log
 
   # Windows：验证共享层（Core/Sources/Agent）与常驻 CLI 的跨平台编译可行性（Spike A/F）。
   windows:
