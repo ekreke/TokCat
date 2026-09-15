@@ -17,17 +17,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Toolchain info
         run: |
+          echo "::notice::macos step: toolchain start"
           swift --version
           xcodebuild -version || true
+          echo "::notice::macos step: toolchain ok"
       - name: Build all
         run: |
           set -o pipefail
           swift build 2>&1 | tee build-macos.log
+          echo "::notice::macos step: build ok"
       - name: Test
         if: success()
         run: |
           set -o pipefail
           swift test 2>&1 | tee test-macos.log
+          echo "::notice::macos step: test ok"
       - name: Surface errors (annotations)
         if: failure()
         shell: bash
@@ -35,6 +39,7 @@ jobs:
           set +e
           block="$(cat build-macos.log test-macos.log 2>/dev/null | grep -nE "error:|failed|Fatal|Signal|Assertion|Crash" | head -40)"
           [ -n "$block" ] || block="$(tail -n 80 build-macos.log test-macos.log 2>/dev/null)"
+          block="${block:0:3500}"
           echo "::error::${block//$'\n'/%0A}"
           exit 0
       - name: Upload logs
