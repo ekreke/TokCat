@@ -17,32 +17,30 @@ struct ChatView: View {
     private let bottomAnchor = "tokcat.chat.bottom"
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(alignment: .leading, spacing: 10) {
-                header
-                Divider()
-                transcript
-                if let permission = model.pendingPermission {
-                    permissionBar(permission)
-                }
-                if !model.notice.isEmpty {
-                    noticeBar
-                }
-                if !model.attachments.isEmpty {
-                    attachmentBar
-                }
-                if !commandSuggestions.isEmpty {
-                    commandBar
-                }
-                if !fileSuggestions.isEmpty {
-                    fileBar
-                }
-                inputBar(maxComposerHeight: max(80, geometry.size.height * 0.4))
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            Divider()
+            transcript
+            if let permission = model.pendingPermission {
+                permissionBar(permission)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .overlay(alignment: .bottomTrailing) { resizeHandle }
+            if !model.notice.isEmpty {
+                noticeBar
+            }
+            if !model.attachments.isEmpty {
+                attachmentBar
+            }
+            if !commandSuggestions.isEmpty {
+                commandBar
+            }
+            if !fileSuggestions.isEmpty {
+                fileBar
+            }
+            inputBar
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .bottomTrailing) { resizeHandle }
         .onAppear { composerFocused = true }
     }
 
@@ -405,7 +403,7 @@ struct ChatView: View {
 
     // MARK: - 输入
 
-    private func inputBar(maxComposerHeight: CGFloat) -> some View {
+    private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Button(action: openFilePicker) {
                 Image(systemName: "paperclip")
@@ -418,22 +416,12 @@ struct ChatView: View {
                 text: $model.input,
                 focused: $composerFocused,
                 isEnabled: isInteractive,
-                maxHeight: maxComposerHeight,
+                placeholder: "发消息…（Enter 发送，Shift+Enter 换行，可直接粘贴图片/文件）",
                 onSubmit: send,
                 onPasteImage: handlePastedImage,
                 onPasteFiles: handleFiles
             )
-            .frame(minHeight: 34)
-            .overlay(alignment: .topLeading) {
-                if model.input.isEmpty {
-                    Text("发消息…（Enter 发送，Shift+Enter 换行，可直接粘贴图片/文件）")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 9)
-                        .allowsHitTesting(false)
-                }
-            }
+            .frame(height: 96)
 
             if model.status == .running {
                 Button("停止") { model.cancel() }
