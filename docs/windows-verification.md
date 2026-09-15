@@ -56,7 +56,7 @@ https://github.com/ekreke/TokCat/releases/latest/download/TokCat.exe
    ```powershell
    & "$env:LOCALAPPDATA\TokCat\TokCatCli.exe" version
    ```
-   → 应打印 `TokCatCli 0.1.6`，**不再弹出 `swiftCore.dll / swift_Concurrency.dll / swiftWinSDK.dll` 缺失错误**。
+   → 应打印 `TokCatCli <版本>`，**不再弹出 `swiftCore.dll / swift_Concurrency.dll / swiftWinSDK.dll` 缺失错误**。
    进一步：`& "$env:LOCALAPPDATA\TokCat\TokCatCli.exe" dump` 打印各采集源统计。
 3. 确认 `%LOCALAPPDATA%\TokCat\` 中除 `TokCatCli.exe` 外，还有一批 `swift*.dll` / `Foundation*.dll` 等运行时。
 4. **托盘**：出现猫图标；空闲慢走（约 2fps）。
