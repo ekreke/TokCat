@@ -42,7 +42,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Build portable bundle
+      - name: Build single-file exe
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
@@ -50,18 +50,29 @@ jobs:
           swift build -c release --product TokCatCli --static-swift-stdlib
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-cli::static swift build failed"; exit 1 }
           $bin = (swift build -c release --product TokCatCli --show-bin-path).Trim()
+          New-Item -ItemType Directory -Force -Path "windows/TokCat.Windows/Payload" | Out-Null
+          Copy-Item (Join-Path $bin "TokCatCli.exe") "windows/TokCat.Windows/Payload/TokCatCli.exe" -Force
 
           dotnet publish windows/TokCat.Windows/TokCat.Windows.csproj `
             -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
             -p:Version=$env:VERSION -o build/win
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-publish::dotnet publish failed"; exit 1 }
+          if (-not (Test-Path "build/win/TokCat.exe")) { Write-Host "::error title=win-singlefile::TokCat.exe missing"; exit 1 }
 
-          Copy-Item (Join-Path $bin "TokCatCli.exe") "build/win/TokCatCli.exe" -Force
-          # 稳定文件名，便于 releases/latest/download 直链。
+          # 主产物：单文件 exe（稳定文件名，便于 releases/latest/download 直链）
+          Copy-Item "build/win/TokCat.exe" "build/TokCat.exe" -Force
+          # 备用：zip（含 exe + 使用说明）
+          "下载后双击 TokCat.exe 运行；若出现 SmartScreen 提示，点「更多信息 → 仍要运行」。" |
+            Out-File -Encoding utf8 "build/win/使用说明.txt"
           Compress-Archive -Path "build/win/*" -DestinationPath "build/TokCat-win-x64.zip" -Force
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/TokCat-win-x64.zip
+          files: |
+            build/TokCat.exe
+            build/TokCat-win-x64.zip

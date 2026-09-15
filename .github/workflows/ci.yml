@@ -98,16 +98,19 @@ jobs:
         run: |
           dotnet build windows/TokCat.Windows/TokCat.Windows.csproj -c Release
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-app-build::C# build failed"; exit $LASTEXITCODE }
-      - name: Publish portable bundle
+      - name: Publish portable bundle (single exe)
         if: success()
         shell: pwsh
         run: |
           swift build -c release --product TokCatCli --static-swift-stdlib
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-cli-release::static swift build failed"; exit 1 }
           $bin = (swift build -c release --product TokCatCli --show-bin-path).Trim()
-          dotnet publish windows/TokCat.Windows/TokCat.Windows.csproj -c Release -r win-x64 --self-contained true -o build/win
+          New-Item -ItemType Directory -Force -Path "windows/TokCat.Windows/Payload" | Out-Null
+          Copy-Item (Join-Path $bin "TokCatCli.exe") "windows/TokCat.Windows/Payload/TokCatCli.exe" -Force
+
+          dotnet publish windows/TokCat.Windows/TokCat.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o build/win
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-publish::dotnet publish failed"; exit 1 }
-          Copy-Item (Join-Path $bin "TokCatCli.exe") "build/win/TokCatCli.exe" -Force
+          if (-not (Test-Path "build/win/TokCat.exe")) { Write-Host "::error title=win-singlefile::TokCat.exe missing"; exit 1 }
           Compress-Archive -Path "build/win/*" -DestinationPath "build/TokCat-win-x64.zip" -Force
       - name: Upload Windows artifact
         if: success()

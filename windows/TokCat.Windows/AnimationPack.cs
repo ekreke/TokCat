@@ -19,7 +19,12 @@ public sealed class AnimationPack : IDisposable
 
     public AnimationPack()
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "Assets", "RunCatCat");
+        // 单文件发布：从自解压目录加载；开发/多文件形态回退到程序目录。
+        var dir = Payload.AssetsDir;
+        if (!Directory.Exists(dir))
+        {
+            dir = Path.Combine(AppContext.BaseDirectory, "Assets", "RunCatCat");
+        }
         if (!Directory.Exists(dir)) return;
         var files = Directory.GetFiles(dir, "cat_*.png");
         Array.Sort(files, StringComparer.Ordinal);
