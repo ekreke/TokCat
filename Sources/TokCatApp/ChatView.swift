@@ -30,6 +30,9 @@ struct ChatView: View {
             if !commandSuggestions.isEmpty {
                 commandBar
             }
+            if !fileSuggestions.isEmpty {
+                fileBar
+            }
             inputBar
         }
         .padding(14)
@@ -237,6 +240,53 @@ struct ChatView: View {
                 .font(.caption)
         }
         .foregroundStyle(.orange)
+    }
+
+    // MARK: - @ 文件引用
+
+    private var mentionQuery: String? {
+        guard let at = model.input.range(of: "@", options: .backwards) else { return nil }
+        let after = model.input[at.upperBound...]
+        if after.contains(" ") || after.contains("\n") { return nil }
+        let before = model.input[..<at.lowerBound]
+        if let last = before.last, !last.isWhitespace { return nil }
+        return String(after)
+    }
+
+    private var fileSuggestions: [String] {
+        guard let query = mentionQuery else { return [] }
+        return model.fileSuggestions(query: query)
+    }
+
+    private var fileBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(fileSuggestions, id: \.self) { path in
+                Button {
+                    insertMention(path)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc")
+                            .font(.caption)
+                        Text(path)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(Color.secondary.opacity(0.08))
+        .cornerRadius(6)
+    }
+
+    private func insertMention(_ path: String) {
+        guard let at = model.input.range(of: "@", options: .backwards) else { return }
+        model.input = String(model.input[..<at.lowerBound]) + "@" + path + " "
+        composerFocused = true
     }
 
     // MARK: - 输入

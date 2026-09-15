@@ -292,6 +292,55 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         attachments = []
     }
 
+    // MARK: - @ 引用文件
+
+    private var fileIndex: [String] = []
+    private var fileIndexRoot: String?
+
+    /// 会话工作目录下的文件相对路径（用于 `@` 引用），带缓存。
+    func fileSuggestions(query: String) -> [String] {
+        guard let root = activeConfiguration?.sessionCWD, !root.isEmpty else { return [] }
+        if fileIndexRoot != root {
+            fileIndexRoot = root
+            fileIndex = Self.enumerateFiles(root: root)
+        }
+        let lowered = query.lowercased()
+        let matches = lowered.isEmpty ? fileIndex : fileIndex.filter { $0.lowercased().contains(lowered) }
+        return Array(matches.prefix(8))
+    }
+
+    private static func enumerateFiles(root: String, limit: Int = 3000) -> [String] {
+        let rootURL = URL(fileURLWithPath: root)
+        guard let enumerator = FileManager.default.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else {
+            return []
+        }
+        let skipDirectories: Set<String> = [
+            ".git", "node_modules", ".build", "DerivedData", "dist", "build",
+            ".venv", "venv", "__pycache__", ".next", "target",
+        ]
+        let prefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
+        var result: [String] = []
+        for case let url as URL in enumerator {
+            if url.hasDirectoryPath {
+                if skipDirectories.contains(url.lastPathComponent) {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+            var relative = url.path
+            if relative.hasPrefix(prefix) {
+                relative = String(relative.dropFirst(prefix.count))
+            }
+            result.append(relative)
+            if result.count >= limit { break }
+        }
+        return result
+    }
+
     private static let maxEmbeddedBytes = 1_000_000
 
     private static let textExtensions: Set<String> = [
