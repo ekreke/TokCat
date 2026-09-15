@@ -24,12 +24,16 @@ public final class RateAggregator {
     /// 摄入一批样本。
     public func ingest(_ samples: [TokenSample]) {
         for sample in samples {
-            let units = converter.units(for: sample)
-            calculator.add(units: units, at: sample.at)
-            totalUnits += units
-            totalUsage += sample.usage
-            perSourceCount[sample.sourceId, default: 0] += 1
+            ingest(sample, units: converter.units(for: sample))
         }
+    }
+
+    /// 摄入单个样本（`units` 由调用方预先折算，避免重复换算）。
+    public func ingest(_ sample: TokenSample, units: Double) {
+        calculator.add(units: units, at: sample.at)
+        totalUnits += units
+        totalUsage += sample.usage
+        perSourceCount[sample.sourceId, default: 0] += 1
     }
 
     /// 推进一个采样周期并返回当前速率（单位/秒）。
