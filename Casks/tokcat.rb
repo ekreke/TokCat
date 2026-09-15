@@ -1,6 +1,6 @@
 cask "tokcat" do
-  version "0.1.3"
-  sha256 "33deae4650f4321a01e8030d439e4df16171a83a0393c0549917c7474443d9e1"
+  version "0.1.4"
+  sha256 "af15ef9486b7d05d308d0e5006490dd7298246e73e042d26fd5cdda8d8937f2b"
 
   url "https://github.com/ekreke/TokCat/releases/download/v#{version}/TokCat-#{version}.dmg"
   name "TokCat"
