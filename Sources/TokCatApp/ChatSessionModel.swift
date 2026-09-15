@@ -1,6 +1,7 @@
 import Foundation
 import TokCatAgent
 import TokCatCore
+import UniformTypeIdentifiers
 
 /// Chat 弹窗的视图模型：驱动一个**常驻**的 ACP 会话（可多轮追问，只显示最新回答）。
 ///
@@ -27,6 +28,23 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         let options: [ACPPermissionOption]
     }
 
+    /// 待发送的附件（图片 / 文件 / 内嵌 resource）。
+    struct PendingAttachment: Identifiable, Equatable {
+        let id: UUID
+        let name: String
+        /// 供缩略图使用的图片数据（仅图片附件非空）。
+        let previewData: Data?
+        /// 组装好的 ACP 内容块（发送时直接使用）。
+        let block: ACPContentBlock
+
+        init(id: UUID = UUID(), name: String, previewData: Data? = nil, block: ACPContentBlock) {
+            self.id = id
+            self.name = name
+            self.previewData = previewData
+            self.block = block
+        }
+    }
+
     @Published private(set) var status: Status = .idle
     /// 最新一条回答（流式累积；每次发送前清空）。
     @Published private(set) var answer: String = ""
@@ -37,6 +55,16 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
     @Published var input: String = ""
     @Published private(set) var agentName: String = ""
     @Published private(set) var pendingPermission: PendingPermission?
+    /// 待发送附件。
+    @Published private(set) var attachments: [PendingAttachment] = []
+    /// agent 广播的可用斜杠命令。
+    @Published private(set) var commands: [ACPCommand] = []
+    /// agent 是否声明图片输入能力。
+    @Published private(set) var imageSupported = false
+    /// agent 是否声明内嵌资源（embeddedContext）能力。
+    @Published private(set) var embeddedContextSupported = false
+    /// 一次性提示（如能力不支持、附件过大）。
+    @Published var notice: String = ""
 
     private var client: ACPClient?
     private var sessionId: String?
@@ -52,7 +80,8 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
     private let throttle = StreamingTextThrottle(interval: 0.15)
 
     var canSend: Bool {
-        status == .ready && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        status == .ready
+            && (!input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
     }
 
     // MARK: - 生命周期
@@ -77,6 +106,9 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         agentName = displayName
         answer = ""
         displayAnswer = ""
+        attachments = []
+        commands = []
+        notice = ""
         throttle.reset()
         activity = "连接中…"
         status = .starting
@@ -107,6 +139,9 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                     // 版本不一致不致命，仅记录；继续尝试。
                     NSLog("TokCat: ACP 协议版本不一致 agent=\(initialized.protocolVersion ?? -1)")
                 }
+                let promptCapabilities = initialized.agentCapabilities?.promptCapabilities
+                self.imageSupported = promptCapabilities?.image ?? false
+                self.embeddedContextSupported = promptCapabilities?.embeddedContext ?? false
                 guard let session = try? await client.newSession(cwd: configuration.sessionCWD) else {
                     throw ACPClientError.invalidResponse("session/new 无 sessionId")
                 }
@@ -186,8 +221,16 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
 
     func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let client, let sessionId, status == .ready else { return }
+        guard status == .ready, let client, let sessionId,
+              !text.isEmpty || !attachments.isEmpty else { return }
+
+        var content: [ACPContentBlock] = []
+        if !text.isEmpty { content.append(.text(text)) }
+        content.append(contentsOf: attachments.map(\.block))
+
         input = ""
+        attachments = []
+        notice = ""
         answer = ""
         displayAnswer = ""
         throttle.reset()
@@ -197,7 +240,7 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
 
         Task { @MainActor in
             do {
-                _ = try await client.prompt(sessionId: sessionId, text: text)
+                _ = try await client.prompt(sessionId: sessionId, content: content)
                 if self.status == .running {
                     self.status = .ready
                     self.activity = ""
@@ -209,6 +252,64 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                 self.forceDisplayFlush()
             }
         }
+    }
+
+    // MARK: - 附件
+
+    /// 添加图片附件（传入已编码的图片数据）。
+    func addImageAttachment(data: Data, mimeType: String, name: String) {
+        guard imageSupported else {
+            notice = "当前 agent 未声明图片输入能力，无法发送图片。"
+            return
+        }
+        let block = ACPContentBlock.image(mimeType: mimeType, data: data.base64EncodedString())
+        attachments.append(PendingAttachment(name: name, previewData: data, block: block))
+    }
+
+    /// 添加文件附件：文本类且支持 embeddedContext 时内嵌，否则用 resource_link。
+    func addFileAttachment(url: URL) {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attributes?[.size] as? NSNumber)?.intValue
+        let mime = Self.mimeType(for: url)
+        let name = url.lastPathComponent
+
+        if embeddedContextSupported, let size, size <= Self.maxEmbeddedBytes,
+           let text = Self.readTextIfSmall(url) {
+            let block = ACPContentBlock.embeddedResource(uri: url.absoluteString, mimeType: mime, text: text)
+            attachments.append(PendingAttachment(name: name, block: block))
+            return
+        }
+        let block = ACPContentBlock.resourceLink(uri: url.absoluteString, name: name, mimeType: mime, size: size)
+        attachments.append(PendingAttachment(name: name, block: block))
+    }
+
+    func removeAttachment(id: UUID) {
+        attachments.removeAll { $0.id == id }
+    }
+
+    func clearAttachments() {
+        attachments = []
+    }
+
+    private static let maxEmbeddedBytes = 1_000_000
+
+    private static let textExtensions: Set<String> = [
+        "txt", "md", "markdown", "json", "jsonc", "yaml", "yml", "toml", "ini", "cfg",
+        "swift", "c", "h", "cpp", "hpp", "m", "mm", "cs", "java", "kt", "go", "rs",
+        "py", "rb", "php", "js", "jsx", "ts", "tsx", "css", "scss", "html", "xml",
+        "sh", "bash", "zsh", "fish", "ps1", "sql", "log", "csv", "tsv", "env", "gitignore",
+    ]
+
+    private static func readTextIfSmall(_ url: URL) -> String? {
+        guard textExtensions.contains(url.pathExtension.lowercased()) else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    private static func mimeType(for url: URL) -> String? {
+        if let type = UTType(filenameExtension: url.pathExtension) {
+            return type.preferredMIMEType
+        }
+        return nil
     }
 
     func cancel() {
@@ -265,6 +366,8 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
             if pendingPermission == nil, let statusText { activity = "工具：\(statusText)" }
         case .plan:
             break
+        case let .availableCommands(commands):
+            self.commands = commands
         }
     }
 

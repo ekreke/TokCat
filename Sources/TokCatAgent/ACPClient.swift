@@ -164,7 +164,12 @@ public final class ACPClient: @unchecked Sendable {
     }
 
     public func prompt(sessionId: String, text: String) async throws -> ACPPromptResult {
-        let params = ACPPromptParams(sessionId: sessionId, prompt: [.text(text)])
+        try await prompt(sessionId: sessionId, content: [.text(text)])
+    }
+
+    /// 发送一组内容块（文本 / 图片 / resource 等）。
+    public func prompt(sessionId: String, content: [ACPContentBlock]) async throws -> ACPPromptResult {
+        let params = ACPPromptParams(sessionId: sessionId, prompt: content)
         let result = try await request(method: ACPMethod.sessionPrompt, params: try params.jsonValue())
         return try result.decode(ACPPromptResult.self)
     }

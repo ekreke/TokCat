@@ -21,18 +21,96 @@ public let ACPProtocolVersion = 1
 
 // MARK: - 内容块
 
-/// ACP 内容块。目前只处理文本；其它类型保留原始 JSON 以便容错。
+/// 内嵌 resource 的内容（`type == "resource"`）。
+public struct ACPEmbeddedResource: Codable, Equatable, Sendable {
+    public var uri: String
+    public var mimeType: String?
+    public var text: String?
+    public var blob: String?
+
+    public init(uri: String, mimeType: String? = nil, text: String? = nil, blob: String? = nil) {
+        self.uri = uri
+        self.mimeType = mimeType
+        self.text = text
+        self.blob = blob
+    }
+}
+
+/// ACP 内容块：文本 / 图片 / 内嵌 resource / resource 链接。
+///
+/// 通过 `type` 判别，未用到的字段不编码（Swifty 合成 Codable 对可选值用
+/// `encodeIfPresent`，因此不会产生 `"data": null` 之类的噪声）。
 public struct ACPContentBlock: Codable, Equatable, Sendable {
     public var type: String
     public var text: String?
+    public var mimeType: String?
+    /// base64 编码的二进制（图片等）。
+    public var data: String?
+    public var uri: String?
+    public var name: String?
+    public var size: Int?
+    public var resource: ACPEmbeddedResource?
 
-    public init(type: String = "text", text: String? = nil) {
+    public init(
+        type: String,
+        text: String? = nil,
+        mimeType: String? = nil,
+        data: String? = nil,
+        uri: String? = nil,
+        name: String? = nil,
+        size: Int? = nil,
+        resource: ACPEmbeddedResource? = nil
+    ) {
         self.type = type
         self.text = text
+        self.mimeType = mimeType
+        self.data = data
+        self.uri = uri
+        self.name = name
+        self.size = size
+        self.resource = resource
     }
 
     public static func text(_ text: String) -> ACPContentBlock {
         ACPContentBlock(type: "text", text: text)
+    }
+
+    public static func image(mimeType: String, data: String, uri: String? = nil) -> ACPContentBlock {
+        ACPContentBlock(type: "image", mimeType: mimeType, data: data, uri: uri)
+    }
+
+    public static func embeddedResource(uri: String, mimeType: String?, text: String) -> ACPContentBlock {
+        ACPContentBlock(
+            type: "resource",
+            resource: ACPEmbeddedResource(uri: uri, mimeType: mimeType, text: text)
+        )
+    }
+
+    public static func resourceLink(
+        uri: String,
+        name: String,
+        mimeType: String? = nil,
+        size: Int? = nil
+    ) -> ACPContentBlock {
+        ACPContentBlock(type: "resource_link", mimeType: mimeType, uri: uri, name: name, size: size)
+    }
+}
+
+// MARK: - 斜杠命令
+
+/// agent 通过 `available_commands_update` 广播的可执行命令。
+public struct ACPCommand: Equatable, Sendable, Identifiable {
+    public var name: String
+    public var description: String
+    /// 命令输入的提示（如 `query to search for`）。
+    public var inputHint: String?
+
+    public var id: String { name }
+
+    public init(name: String, description: String, inputHint: String? = nil) {
+        self.name = name
+        self.description = description
+        self.inputHint = inputHint
     }
 }
 
@@ -189,7 +267,7 @@ public enum ACPSessionUpdate: Equatable, Sendable {
     case plan(entries: [String])
     case sessionInfo(title: String?)
     case usage
-    case availableCommands
+    case availableCommands([ACPCommand])
     case unknown(kind: String)
 
     /// 从 `update` 对象的判别字段 `sessionUpdate` 解析。
@@ -225,7 +303,14 @@ public enum ACPSessionUpdate: Equatable, Sendable {
         case "usage_update":
             self = .usage
         case "available_commands_update":
-            self = .availableCommands
+            let commands = json["availableCommands"]?.arrayValue?.map { command in
+                ACPCommand(
+                    name: command["name"]?.stringValue ?? "",
+                    description: command["description"]?.stringValue ?? "",
+                    inputHint: command["input"]?["hint"]?.stringValue
+                )
+            }.filter { !$0.name.isEmpty } ?? []
+            self = .availableCommands(commands)
         default:
             self = .unknown(kind: kind)
         }

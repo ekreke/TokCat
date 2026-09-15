@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = SourceStateStore()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppMenu.install()
         AnimationRegistry.shared.loadAll()
         let bundled = BundledAnimations.register()
         if Debug.enabled {
