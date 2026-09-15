@@ -11,5 +11,10 @@ cask "tokcat" do
 
   app "TokCat.app"
 
+  caveats <<~EOS
+    TokCat 是菜单栏应用（运行时不显示 Dock 图标）。
+    安装后在「启动台 / 应用程序」或 Spotlight 中打开即可。
+  EOS
+
   zap trash: "~/Library/Preferences/com.ekreke.tokcat.plist"
 end

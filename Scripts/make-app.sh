@@ -52,8 +52,9 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
     <string>${BUILD_NUMBER}</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
+    <!-- 出现在 Launchpad / 应用程序；运行时不显示 Dock 图标（main.swift 里设为 accessory）。 -->
     <key>LSUIElement</key>
-    <true/>
+    <false/>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
