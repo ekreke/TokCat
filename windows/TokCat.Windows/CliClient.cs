@@ -29,6 +29,9 @@ public sealed class CliClient : IDisposable
 
     public static string? Locate()
     {
+        // 优先使用自解压目录（单文件发布形态）。
+        if (File.Exists(Payload.CliExe)) return Payload.CliExe;
+
         var local = Path.Combine(AppContext.BaseDirectory, "TokCatCli.exe");
         if (File.Exists(local)) return local;
 

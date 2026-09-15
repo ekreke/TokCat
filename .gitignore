@@ -6,3 +6,8 @@ build/
 *.xcodeproj
 *.xcworkspace
 TokCat.app/
+
+# generated during Windows release (embedded into TokCat.exe)
+windows/TokCat.Windows/Payload/
+windows/**/bin/
+windows/**/obj/
