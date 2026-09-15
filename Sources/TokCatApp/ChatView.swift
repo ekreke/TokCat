@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import TokCatAgent
 
 /// Chat 弹窗：输入 + 流式回答（只显示最新回答，Markdown 渲染）。
@@ -9,7 +10,7 @@ struct ChatView: View {
     var onSetup: (() -> Void)?
     /// 右下角拖拽手柄的尺寸增量回调（由控制器换算成弹窗尺寸）。
     var onResize: ((CGSize) -> Void)?
-    @FocusState private var inputFocused: Bool
+    @State private var composerFocused = true
     @State private var lastDrag: CGSize = .zero
 
     var body: some View {
@@ -20,12 +21,21 @@ struct ChatView: View {
             if let permission = model.pendingPermission {
                 permissionBar(permission)
             }
+            if !model.notice.isEmpty {
+                noticeBar
+            }
+            if !model.attachments.isEmpty {
+                attachmentBar
+            }
+            if !commandSuggestions.isEmpty {
+                commandBar
+            }
             inputBar
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .onAppear { inputFocused = true }
+        .onAppear { composerFocused = true }
     }
 
     private var header: some View {
@@ -127,14 +137,145 @@ struct ChatView: View {
         .cornerRadius(6)
     }
 
+    // MARK: - 附件
+
+    private var attachmentBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(model.attachments) { attachment in
+                    attachmentChip(attachment)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func attachmentChip(_ attachment: ChatSessionModel.PendingAttachment) -> some View {
+        HStack(spacing: 6) {
+            if let data = attachment.previewData, let image = NSImage(data: data) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 26, height: 26)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                Image(systemName: "doc")
+                    .frame(width: 26, height: 26)
+            }
+            Text(attachment.name)
+                .font(.caption)
+                .lineLimit(1)
+            Button {
+                model.removeAttachment(id: attachment.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.secondary.opacity(0.12))
+        .cornerRadius(6)
+    }
+
+    // MARK: - 命令联想
+
+    private var commandSuggestions: [ACPCommand] {
+        let text = model.input
+        guard text.hasPrefix("/"), !text.contains(" ") else { return [] }
+        let query = String(text.dropFirst()).lowercased()
+        return Array(
+            model.commands
+                .filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
+                .prefix(8)
+        )
+    }
+
+    private var commandBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(commandSuggestions) { command in
+                Button {
+                    model.input = "/\(command.name) "
+                    composerFocused = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("/\(command.name)")
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        Text(command.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        if let hint = command.inputHint, !hint.isEmpty {
+                            Text(hint)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(Color.secondary.opacity(0.08))
+        .cornerRadius(6)
+    }
+
+    private var noticeBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+            Text(model.notice)
+                .font(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button("知道了") { model.notice = "" }
+                .buttonStyle(.link)
+                .font(.caption)
+        }
+        .foregroundStyle(.orange)
+    }
+
+    // MARK: - 输入
+
     private var inputBar: some View {
-        HStack(spacing: 8) {
-            TextField("发消息…", text: $model.input, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...4)
-                .focused($inputFocused)
-                .onSubmit(send)
-                .disabled(!isInteractive)
+        HStack(alignment: .bottom, spacing: 8) {
+            Button(action: pasteClipboardImage) {
+                Image(systemName: "photo.on.rectangle")
+            }
+            .buttonStyle(.borderless)
+            .help(model.imageSupported ? "粘贴剪贴板图片" : "当前 agent 未声明图片输入能力")
+            .disabled(!isInteractive)
+
+            Button(action: openFilePicker) {
+                Image(systemName: "paperclip")
+            }
+            .buttonStyle(.borderless)
+            .help("添加文件")
+            .disabled(!isInteractive)
+
+            ComposerTextView(
+                text: $model.input,
+                focused: $composerFocused,
+                isEnabled: isInteractive,
+                onSubmit: send,
+                onPasteImage: handlePastedImage,
+                onPasteFiles: handleFiles
+            )
+            .frame(minHeight: 34)
+            .overlay(alignment: .topLeading) {
+                if model.input.isEmpty {
+                    Text("发消息…（Enter 发送，Shift+Enter 换行，可直接粘贴图片/文件）")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .allowsHitTesting(false)
+                }
+            }
 
             if model.status == .running {
                 Button("停止") { model.cancel() }
@@ -157,6 +298,47 @@ struct ChatView: View {
     private func send() {
         guard model.canSend else { return }
         model.send()
+    }
+
+    // MARK: - 附件处理
+
+    private func pasteClipboardImage() {
+        guard let data = PasteAwareTextView.imageData(from: .general) else {
+            model.notice = "剪贴板里没有图片。"
+            return
+        }
+        handlePastedImage(data)
+    }
+
+    private func handlePastedImage(_ data: Data) {
+        guard let normalized = ImageAttachment.normalized(data) else {
+            model.notice = "无法解析图片。"
+            return
+        }
+        model.addImageAttachment(data: normalized.data, mimeType: normalized.mimeType, name: "粘贴的图片")
+    }
+
+    private func handleFiles(_ urls: [URL]) {
+        for url in urls {
+            let type = UTType(filenameExtension: url.pathExtension)
+            if let type, type.conforms(to: .image),
+               let data = try? Data(contentsOf: url),
+               let normalized = ImageAttachment.normalized(data) {
+                model.addImageAttachment(data: normalized.data, mimeType: normalized.mimeType, name: url.lastPathComponent)
+            } else {
+                model.addFileAttachment(url: url)
+            }
+        }
+    }
+
+    private func openFilePicker() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK {
+            handleFiles(panel.urls)
+        }
     }
 
     private var statusText: String {

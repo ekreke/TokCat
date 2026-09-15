@@ -12,6 +12,8 @@ public enum AgentEvent: Equatable, Sendable {
     case toolUpdate(title: String?, status: String?)
     /// 计划/待办更新。
     case plan([String])
+    /// agent 广播的可用斜杠命令。
+    case availableCommands([ACPCommand])
 }
 
 extension ACPSessionUpdate {
@@ -28,7 +30,9 @@ extension ACPSessionUpdate {
             return .toolUpdate(title: title, status: status)
         case let .plan(entries):
             return entries.isEmpty ? nil : .plan(entries)
-        case .userMessageChunk, .sessionInfo, .usage, .availableCommands, .unknown:
+        case let .availableCommands(commands):
+            return commands.isEmpty ? nil : .availableCommands(commands)
+        case .userMessageChunk, .sessionInfo, .usage, .unknown:
             return nil
         }
     }

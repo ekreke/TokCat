@@ -63,6 +63,9 @@ make highlightcheck  # 验证 Highlight.js 资源可加载（主题/语言/示�
 - 回答以 **Markdown 渲染**（[MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui)）：标题 / 列表 / 引用 / 表格 / 链接 / 代码块；代码块用 [Highlight.js](https://highlightjs.org)（HighlighterSwift）做**语法高亮**（约 192 种语言，浅/深色自动切主题）。
 - 流式期间按 **150ms 节流**重解析 Markdown，并把高亮结果按「语言 + 源码」缓存，避免逐 token 卡顿。
 - 弹窗尺寸可用右下角**拖拽手柄**调整，并记住上次大小（340×360 ~ 900×900）。
+- **富输入**：多行输入框（`Enter` 发送 / `Shift+Enter` 换行），支持 **⌘V 粘贴文字 / 图片 / 文件**、拖拽图片与文件、「附图 / 附文件」按钮；图片会等比缩放（≤2000px、≤5MB）后以 `image` 内容块发送，文件按 agent 能力内嵌（`resource`）或引用（`resource_link`）。
+- **斜杠命令**：agent 通过 `available_commands_update` 广播命令时，输入 `/` 弹出命令联想（名称 / 说明 / 输入提示），选中补全后按普通提示发送。
+- 主菜单内置隐藏的 **Edit 菜单**（撤销/剪切/复制/粘贴/全选），使菜单栏应用的编辑快捷键可用。
 
 ## 趋势图（右键菜单顶部）
 
