@@ -224,9 +224,10 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         guard status == .ready, let client, let sessionId,
               !text.isEmpty || !attachments.isEmpty else { return }
 
-        var content: [ACPContentBlock] = []
-        if !text.isEmpty { content.append(.text(text)) }
-        content.append(contentsOf: attachments.map(\.block))
+        var blocks: [ACPContentBlock] = []
+        if !text.isEmpty { blocks.append(.text(text)) }
+        blocks.append(contentsOf: attachments.map(\.block))
+        let content = blocks
 
         input = ""
         attachments = []

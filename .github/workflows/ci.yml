@@ -17,21 +17,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Toolchain info
         run: |
-          echo "::notice::macos step: toolchain start"
           swift --version
           xcodebuild -version || true
-          echo "::notice::macos step: toolchain ok"
       - name: Build all
         run: |
           set -o pipefail
           swift build 2>&1 | tee build-macos.log
-          echo "::notice::macos step: build ok"
       - name: Test
         if: success()
         run: |
           set -o pipefail
           swift test 2>&1 | tee test-macos.log
-          echo "::notice::macos step: test ok"
       - name: Surface errors (annotations)
         if: failure()
         shell: bash
