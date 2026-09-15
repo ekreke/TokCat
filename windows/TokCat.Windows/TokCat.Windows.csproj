@@ -18,9 +18,12 @@
       <LogicalName>%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
 
-    <!-- 内嵌 Swift 引擎；仅在发布/CI 拷入 Payload 后存在。 -->
+    <!-- 内嵌 Swift 引擎与运行时 DLL；仅在发布/CI 拷入 Payload 后存在。 -->
     <EmbeddedResource Include="Payload\TokCatCli.exe" Condition="Exists('Payload\TokCatCli.exe')">
       <LogicalName>TokCatCli.exe</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Payload\*.dll" Condition="Exists('Payload')">
+      <LogicalName>%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

@@ -31,6 +31,16 @@ internal static class Payload
         Directory.CreateDirectory(AssetsDir);
 
         ExtractResource("TokCatCli.exe", CliExe);
+
+        // Swift 运行时 DLL（Windows 不支持完全静态链接）：与 CLI 同目录，系统可自动加载。
+        foreach (var name in typeof(Payload).Assembly.GetManifestResourceNames())
+        {
+            if (name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                ExtractResource(name, Path.Combine(Root, name));
+            }
+        }
+
         foreach (var frame in CatFrames)
         {
             ExtractResource(frame, Path.Combine(AssetsDir, frame));
