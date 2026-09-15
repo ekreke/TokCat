@@ -209,11 +209,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let loginItem = NSMenuItem(title: "开机自启", action: #selector(toggleLoginItem), keyEquivalent: "")
-        loginItem.target = self
-        loginItem.state = LoginItemManager.isEnabled ? .on : .off
-        loginItem.isEnabled = LoginItemManager.isSupported
-        menu.addItem(loginItem)
+        menu.addItem(loginItemMenu())
 
         menu.addItem(.separator())
         menu.addItem(item("退出 TokCat", #selector(quit), key: "q"))
@@ -387,6 +383,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return parent
     }
 
+    private func loginItemMenu() -> NSMenuItem {
+        let item = NSMenuItem(title: "开机自启", action: #selector(toggleLoginItem), keyEquivalent: "")
+        item.target = self
+        switch LoginItemManager.currentState() {
+        case .enabled:
+            item.state = .on
+        case .requiresApproval:
+            item.title = "开机自启（需在系统设置中允许…）"
+            item.state = .off
+        case .disabled, .failed:
+            item.state = .off
+        case .unsupported:
+            item.state = .off
+            item.isEnabled = false
+        }
+        return item
+    }
+
     private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
@@ -459,7 +473,49 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func toggleLoginItem() {
-        LoginItemManager.setEnabled(!LoginItemManager.isEnabled)
+        let target = !LoginItemManager.isEnabled
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let state = LoginItemManager.setEnabled(target)
+            DispatchQueue.main.async { self?.handleLoginItemResult(state) }
+        }
+    }
+
+    private func handleLoginItemResult(_ state: LoginItemState) {
+        switch state {
+        case .enabled(let mechanism):
+            if mechanism == .launchAgent {
+                NSLog("TokCat: 已通过 LaunchAgent 开启开机自启")
+            }
+        case .requiresApproval:
+            presentLoginItemAlert(
+                title: "需要你的允许",
+                message: "TokCat 已加入登录项，但需要在「系统设置 → 通用 → 登录项」中允许后才会生效。",
+                openSettings: true
+            )
+        case .failed(let message):
+            presentLoginItemAlert(title: "设置开机自启失败", message: message, openSettings: false)
+        case .disabled, .unsupported:
+            break
+        }
+    }
+
+    private func presentLoginItemAlert(title: String, message: String, openSettings: Bool) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        if openSettings {
+            alert.addButton(withTitle: "打开登录项设置")
+            alert.addButton(withTitle: "稍后")
+        } else {
+            alert.addButton(withTitle: "好")
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if openSettings, response == .alertFirstButtonReturn {
+            let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func quit() {

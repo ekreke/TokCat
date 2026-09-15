@@ -1,18 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// 支持多行、Enter 发送、粘贴/拖拽图片与文件的输入框（包装 `NSTextView`）。
+/// 多行输入框（包装 `NSTextView`），**固定高度 + 内部滚动**。
 ///
 /// - `Enter` 发送，`Shift+Enter` 换行。
-/// - `⌘V`：剪贴板有图片 → 作为图片附件；有文件 → 作为文件附件；否则文本粘贴。
-///   通过**本地事件监听**拦截，不依赖 Edit 菜单启用状态（纯图片粘贴板会让菜单 Paste 变灰）。
-/// - 高度随内容自适应（按整行步进），超过 `maxHeight` 后内部滚动并自动跟随光标。
+/// - `⌘V`：剪贴板有图片 → 图片附件；有文件 → 文件附件；否则文本粘贴。
+///   通过**本地事件监听**拦截，不依赖 Edit 菜单启用状态。
+/// - 高度由外部固定；内容超出后内部滚动并自动跟随光标。
+/// - 占位符直接画在 `NSTextView` 内（避免与 SwiftUI 叠层文字互相覆盖）。
 struct ComposerTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var focused: Bool
     var isEnabled: Bool
-    /// 自适应高度的上限（超出后内部滚动）。
-    var maxHeight: CGFloat
+    var placeholder: String
     var onSubmit: () -> Void
     var onPasteImage: (Data) -> Void
     var onPasteFiles: ([URL]) -> Void
@@ -20,7 +20,7 @@ struct ComposerTextView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = PasteAwareTextView(frame: NSRect(x: 0, y: 0, width: 240, height: 34))
+        let textView = PasteAwareTextView(frame: NSRect(x: 0, y: 0, width: 240, height: 96))
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.isEditable = true
@@ -33,13 +33,15 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.registerForDraggedTypes([.fileURL, .tiff, .png])
+        textView.placeholder = placeholder
 
-        // 文档视图随滚动视图宽度自适应，否则宽度为 0、文字不可见。
+        // 文档视图随滚动视图宽度自适应；高度随内容增长，超出滚动区域由滚动视图处理。
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        // 完全交给 widthTracksTextView，不再手动改 containerSize（避免布局错乱）。
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 
@@ -53,7 +55,7 @@ struct ComposerTextView: NSViewRepresentable {
         let scroll = NSScrollView()
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = false
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
 
@@ -75,40 +77,15 @@ struct ComposerTextView: NSViewRepresentable {
             onPasteFiles: onPasteFiles
         )
         textView.isEditable = isEnabled
+        textView.placeholder = placeholder
         // 仅在外部改动（如补全命令/清空）时回写，避免打断正在进行的输入。
         if textView.string != text {
             textView.string = text
+            textView.needsDisplay = true
         }
         if focused, textView.window?.firstResponder !== textView {
             DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
         }
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
-        let width = proposal.width ?? nsView.contentSize.width
-        guard let textView = context.coordinator.textView,
-              let layoutManager = textView.layoutManager,
-              let container = textView.textContainer else {
-            return CGSize(width: max(1, width), height: min(max(maxHeight, 34), 34))
-        }
-        let font = textView.font ?? NSFont.systemFont(ofSize: 13)
-        let lineHeight = max(1, layoutManager.defaultLineHeight(for: font))
-        let insets = textView.textContainerInset.height * 2
-        let minimum = lineHeight + insets
-
-        // 仅在宽度变化时才改容器宽度，避免与 widthTracksTextView 互相覆盖导致抖动。
-        let contentWidth = max(1, width - textView.textContainerInset.width * 2)
-        if abs(container.containerSize.width - contentWidth) > 0.5 {
-            container.containerSize = NSSize(width: contentWidth, height: .greatestFiniteMagnitude)
-        }
-        layoutManager.ensureLayout(for: container)
-
-        // 按整行步进，消除亚像素高度摆动。
-        let contentHeight = layoutManager.usedRect(for: container).height
-        let lines = max(1, Int((contentHeight / lineHeight).rounded(.up)))
-        let desired = CGFloat(lines) * lineHeight + insets
-        let upperBound = max(minimum, maxHeight)
-        return CGSize(width: max(1, width), height: min(max(desired, minimum), upperBound))
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -162,13 +139,16 @@ struct ComposerTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
             parent.text = textView.string
+            textView.needsDisplay = true
             textView.scrollRangeToVisible(textView.selectedRange())
         }
     }
 }
 
-/// 拦截粘贴与回车、接收拖拽的 `NSTextView`。
+/// 拦截粘贴与回车、接收拖拽、并在空文本时绘制占位符的 `NSTextView`。
 final class PasteAwareTextView: NSTextView {
+    var placeholder: String?
+
     private var onSubmit: (() -> Void)?
     private var onPasteImage: ((Data) -> Void)?
     private var onPasteFiles: (([URL]) -> Void)?
@@ -181,6 +161,25 @@ final class PasteAwareTextView: NSTextView {
         self.onSubmit = onSubmit
         self.onPasteImage = onPasteImage
         self.onPasteFiles = onPasteFiles
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard string.isEmpty, let placeholder, !placeholder.isEmpty else { return }
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font ?? NSFont.systemFont(ofSize: 13),
+            .foregroundColor: NSColor.placeholderTextColor,
+        ]
+        let inset = textContainerInset
+        let padding = textContainer?.lineFragmentPadding ?? 0
+        let rect = NSRect(
+            x: inset.width + padding,
+            y: inset.height,
+            width: max(0, bounds.width - inset.width * 2 - padding * 2),
+            height: max(0, bounds.height - inset.height * 2)
+        )
+        (placeholder as NSString).draw(in: rect, withAttributes: attributes)
     }
 
     override func paste(_ sender: Any?) {
