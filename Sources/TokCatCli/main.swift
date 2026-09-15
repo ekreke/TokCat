@@ -32,7 +32,7 @@ default:
 }
 
 enum TokCatVersion {
-    static let string = "0.1.0"
+    static var string: String { TokCatBuildVersion.string }
 }
 
 // MARK: - 协议输出

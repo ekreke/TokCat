@@ -110,6 +110,8 @@ jobs:
         if: success()
         shell: pwsh
         run: |
+          $v = if ($env:VERSION) { $env:VERSION } else { "0.0.0-dev" }
+          'enum TokCatBuildVersion { static let string = "' + $v + '" }' | Out-File -Encoding utf8 "Sources/TokCatCli/BuildVersion.swift"
           swift build -c release --product TokCatCli
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-cli-release::swift build failed"; exit 1 }
           $bin = (swift build -c release --product TokCatCli --show-bin-path).Trim()
