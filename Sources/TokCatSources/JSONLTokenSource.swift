@@ -59,6 +59,7 @@ public enum AgentPaths {
     public static var codexSessions: URL { home.appendingPathComponent(".codex/sessions") }
     public static var piSessions: URL { home.appendingPathComponent(".pi/agent/sessions") }
     public static var openCodeDB: String { home.appendingPathComponent(".local/share/opencode/opencode.db").path }
+    public static var hermesDB: String { home.appendingPathComponent(".hermes/state.db").path }
     public static var ccSwitchDB: String { home.appendingPathComponent(".cc-switch/cc-switch.db").path }
     public static var ccSwitchPricing: String { home.appendingPathComponent(".cc-switch/model-pricing.json").path }
 }

@@ -5,7 +5,7 @@
 - 菜单栏只显示一只小猫，token 消耗越快，动画越快；空闲时以 2fps 慢走。
 - **左键点图标**：弹出 **Chat** —— 通过 [ACP (Agent Client Protocol)](https://agentclientprotocol.com) 与本地 agent 单次会话，流式回答、可多轮追问（只显示最新回答）。
 - **右键点图标**：弹出菜单，顶部内嵌「最近 1 / 5 / 10 分钟」消耗趋势图。
-- 采集源可插拔：opencode / Claude Code / Codex / pi，以及可选的 cc-switch 聚合库。
+- 采集源可插拔：opencode / Claude Code / Codex / pi / Hermes，以及可选的 cc-switch 聚合库。
 - 接入 **Hermes**（本地 / 远程 SSH，见 [Hermes 接入](#hermes-接入acp)）。
 - 动画可插拔：内置 RunCat 精灵图 + 外部 PNG 序列动画包。
 
@@ -66,7 +66,7 @@ make highlightcheck  # 验证 Highlight.js 资源可加载（主题/语言/示�
 
 ## 趋势图（右键菜单顶部）
 
-- **每个客户端一条彩色折线**（opencode 蓝 / claude 橙 / codex 紫 / pi 青 / cc-switch 粉 / 模拟 灰，其它按 id 派生色），底部图例显示各客户端小计。
+- **每个客户端一条彩色折线**（opencode 蓝 / claude 橙 / codex 紫 / pi 青 / hermes 绿 / cc-switch 粉 / 模拟 灰，其它按 id 派生色），底部图例显示各客户端小计。
 - 固定展示**最近 5 分钟**；顶部一行统计：**当前速率 / 合计 / 峰值**。
 - 打开菜单时取一次**快照渲染**并冻结 Y 轴上限，菜单打开期间不重绘，避免折线抖动。
 - 单位缩写用 `t`（如 `1.23K t/s`、`1.23K t`）；金额口径为 `$/s`、`$`。
@@ -99,6 +99,7 @@ Sources/
 │   ├─ JSONLTokenSource（基类：目录增量读取 + 去重）
 │   ├─ ClaudeCodeSource / CodexSource / PiSource
 │   ├─ OpenCodeSource（SQLite 只读，按消息增量）
+│   ├─ HermesSource（SQLite 只读，按主键增量，含 cron）
 │   ├─ CcSwitchDBSource（可选聚合源）
 │   ├─ ModelPricingStore（models.dev 定价）
 │   └─ Support/     FileTail(POSIX stat), DirectoryTailer(带缓存), SourceStateStore, SQLiteRO, Parsing
@@ -223,6 +224,7 @@ providers:
 | Claude Code | `~/.claude/projects/**/*.jsonl` | `message.usage.*` | 按 `message.id` 去重 |
 | Codex | `~/.codex/sessions/**/rollout-*.jsonl` | `event_msg.token_count.info.last_token_usage` | 单请求增量；`input_tokens` 需扣除缓存命中；reasoning 是 output 子集 |
 | pi | `~/.pi/agent/sessions/**/*.jsonl` | `message.usage.*` | 仅 assistant 消息 |
+| Hermes | `~/.hermes/state.db` | `session_model_usage.*_tokens` | 只读；按主键 `(session,model,provider,base_url,mode,task)` 记累计、只上报**增量**（含 cron 用量） |
 | cc-switch | `~/.cc-switch/cc-switch.db` | `proxy_request_logs` | 默认关闭（与其他源重复） |
 
 > 数据库源首次轮询从"当前时刻"开始，不回填历史。`make dump` 会从零扫描全部历史用于验证。

@@ -7,6 +7,7 @@ enum SourcePalette {
         "claude": .orange,
         "codex": .purple,
         "pi": .teal,
+        "hermes": .green,
         "cc-switch": .pink,
         "simulated": .gray,
     ]
