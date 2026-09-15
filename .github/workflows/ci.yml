@@ -123,6 +123,12 @@ jobs:
           if (-not $core) { Write-Host "::error title=win-runtime::swiftCore.dll not found"; exit 1 }
           Copy-Item "$($core.Directory.FullName)\*.dll" $payload -Force
 
+          # 补齐 MSVC C 运行时（app-local 部署，避免用户未装 VC++ Redistributable）。
+          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll")) {
+            $src = Join-Path "$env:SystemRoot\System32" $dll
+            if (Test-Path $src) { Copy-Item $src $payload -Force }
+          }
+
           # 展示打包内容（可匿名读取的 notice）
           $names = (Get-ChildItem $payload -File | ForEach-Object { $_.Name }) -join ","
           Write-Host "::notice title=win-payload::$names"

@@ -61,6 +61,12 @@ jobs:
           if (-not $core) { Write-Host "::error title=win-runtime::swiftCore.dll not found"; exit 1 }
           Copy-Item "$($core.Directory.FullName)\*.dll" $payload -Force
 
+          # 补齐 MSVC C 运行时（app-local 部署，避免用户未装 VC++ Redistributable）。
+          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll")) {
+            $src = Join-Path "$env:SystemRoot\System32" $dll
+            if (Test-Path $src) { Copy-Item $src $payload -Force }
+          }
+
           dotnet publish windows/TokCat.Windows/TokCat.Windows.csproj `
             -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true `
