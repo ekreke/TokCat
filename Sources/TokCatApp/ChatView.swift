@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import TokCatAgent
 
-/// Chat 弹窗：输入 + 流式回答（只显示最新回答，Markdown 渲染）。
+/// Chat 弹窗：对话记录（用户提问 + agent 回答）+ 富输入。
 struct ChatView: View {
     @ObservedObject var model: ChatSessionModel
     /// 未安装 agent 时点击“安装 / 设置”。
@@ -12,12 +12,15 @@ struct ChatView: View {
     var onResize: ((CGSize) -> Void)?
     @State private var composerFocused = true
     @State private var lastDrag: CGSize = .zero
+    /// 是否自动跟随到底部（用户向上滚动后关闭）。
+    @State private var autoFollow = true
+    private let bottomAnchor = "tokcat.chat.bottom"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             Divider()
-            output
+            transcript
             if let permission = model.pendingPermission {
                 permissionBar(permission)
             }
@@ -58,31 +61,140 @@ struct ChatView: View {
         }
     }
 
-    private var output: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                if case let .failed(message) = model.status {
-                    Label(message, systemImage: "exclamationmark.triangle")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if model.answer.isEmpty, model.displayAnswer.isEmpty {
-                    Text(model.activity.isEmpty ? "问点什么吧。" : model.activity)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ChatMarkdownView(markdown: model.displayAnswer)
-                        .font(.system(size: 12.5))
+    // MARK: - 对话记录
+
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if model.messages.isEmpty {
+                        emptyState
+                    }
+                    ForEach(model.messages) { message in
+                        messageBubble(message).id(message.id)
+                    }
+                    if !model.activity.isEmpty, model.status == .running {
+                        Text(model.activity)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Color.clear
+                        .frame(height: 1)
+                        .id(bottomAnchor)
+                        .onAppear { autoFollow = true }
+                        .onDisappear { autoFollow = false }
                 }
-                if !model.answer.isEmpty, !model.activity.isEmpty {
-                    Text(model.activity)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
+            }
+            .onChange(of: model.messages.count) { _ in
+                autoFollow = true
+                scrollToBottom(proxy)
+            }
+            .onChange(of: model.streamingDisplayText) { _ in
+                if autoFollow { scrollToBottom(proxy) }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !autoFollow {
+                    Button {
+                        autoFollow = true
+                        scrollToBottom(proxy)
+                    } label: {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(6)
+                    .help("回到底部")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxHeight: .infinity)
+    }
+
+    private var emptyState: some View {
+        Group {
+            if case let .failed(message) = model.status {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(model.activity.isEmpty ? "问点什么吧。" : model.activity)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func messageBubble(_ message: ChatSessionModel.ChatMessage) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            if message.role == .user { Spacer(minLength: 20) }
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+                if !message.images.isEmpty || !message.fileNames.isEmpty {
+                    attachmentsPreview(message)
+                }
+                let text = bubbleText(message)
+                if !text.isEmpty {
+                    bubbleBody(message, text: text)
+                }
+            }
+            if message.role == .agent { Spacer(minLength: 20) }
+        }
+    }
+
+    private func bubbleBody(_ message: ChatSessionModel.ChatMessage, text: String) -> some View {
+        Group {
+            if message.role == .user {
+                Text(text)
+                    .font(.system(size: 12.5))
+                    .textSelection(.enabled)
+            } else {
+                ChatMarkdownView(markdown: text)
+                    .font(.system(size: 12.5))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(message.role == .user ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.10))
+        )
+    }
+
+    private func bubbleText(_ message: ChatSessionModel.ChatMessage) -> String {
+        message.isStreaming ? model.streamingDisplayText : message.text
+    }
+
+    private func attachmentsPreview(_ message: ChatSessionModel.ChatMessage) -> some View {
+        HStack(spacing: 6) {
+            ForEach(Array(message.images.enumerated()), id: \.offset) { _, data in
+                if let image = NSImage(data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            ForEach(Array(message.fileNames.enumerated()), id: \.offset) { _, name in
+                HStack(spacing: 4) {
+                    Image(systemName: "doc")
+                    Text(name).font(.caption2).lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(5)
+            }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            proxy.scrollTo(bottomAnchor, anchor: .bottom)
+        }
     }
 
     /// 右下角拖拽手柄：调整弹窗尺寸。
@@ -140,7 +252,7 @@ struct ChatView: View {
         .cornerRadius(6)
     }
 
-    // MARK: - 附件
+    // MARK: - 待发送附件
 
     private var attachmentBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {

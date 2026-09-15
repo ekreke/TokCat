@@ -3,13 +3,14 @@ import TokCatAgent
 import TokCatCore
 import UniformTypeIdentifiers
 
-/// Chat 弹窗的视图模型：驱动一个**常驻**的 ACP 会话（可多轮追问，只显示最新回答）。
+/// Chat 弹窗的视图模型：驱动一个**常驻**的 ACP 会话。
 ///
 /// 生命周期：
 /// - 左键打开 → `ensureSession`：已就绪且配置未变则复用，否则启动。
 /// - 关闭弹窗**不结束**会话；空闲超过 `idleReapInterval` 才回收进程。
 /// - 换 Agent / 改工作目录 / 退出 App → `shutdown()`。
 ///
+/// 会话历史仅保留**内存**（当前会话）；重连/换 Agent 会清空。
 /// 所有公开发起的方法都应在主线程调用；来自 agent 的回调统一跳回主线程。
 final class ChatSessionModel: ObservableObject, @unchecked Sendable {
     enum Status: Equatable {
@@ -45,11 +46,41 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 一条对话记录（用户提问或 agent 回答）。
+    struct ChatMessage: Identifiable, Equatable {
+        enum Role: Equatable { case user, agent }
+
+        let id: UUID
+        let role: Role
+        var text: String
+        /// 图片附件缩略图数据。
+        var images: [Data]
+        /// 文件附件名（非图片）。
+        var fileNames: [String]
+        var isStreaming: Bool
+
+        init(
+            id: UUID = UUID(),
+            role: Role,
+            text: String = "",
+            images: [Data] = [],
+            fileNames: [String] = [],
+            isStreaming: Bool = false
+        ) {
+            self.id = id
+            self.role = role
+            self.text = text
+            self.images = images
+            self.fileNames = fileNames
+            self.isStreaming = isStreaming
+        }
+    }
+
     @Published private(set) var status: Status = .idle
-    /// 最新一条回答（流式累积；每次发送前清空）。
-    @Published private(set) var answer: String = ""
-    /// 供 Markdown 渲染的节流快照（避免每个 token 都重解析整段）。
-    @Published private(set) var displayAnswer: String = ""
+    /// 当前会话的对话记录（内存）。
+    @Published private(set) var messages: [ChatMessage] = []
+    /// 流式回答的节流展示文本（用于正在生成的那条消息）。
+    @Published private(set) var streamingDisplayText: String = ""
     /// 当前活动提示（思考中 / 运行工具 / 等待授权）。
     @Published private(set) var activity: String = ""
     @Published var input: String = ""
@@ -70,6 +101,7 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
     private var sessionId: String?
     private var activeConfiguration: ACPLaunchConfiguration?
     private var permissionContinuation: CheckedContinuation<ACPPermissionResult, Never>?
+    private var streamingMessageID: UUID?
 
     private var idleTimer: Timer?
     private var lastActivity = Date()
@@ -104,12 +136,7 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         sessionId = nil
         activeConfiguration = configuration
         agentName = displayName
-        answer = ""
-        displayAnswer = ""
-        attachments = []
-        commands = []
-        notice = ""
-        throttle.reset()
+        resetConversation()
         activity = "连接中…"
         status = .starting
         touch()
@@ -142,6 +169,7 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                 let promptCapabilities = initialized.agentCapabilities?.promptCapabilities
                 self.imageSupported = promptCapabilities?.image ?? false
                 self.embeddedContextSupported = promptCapabilities?.embeddedContext ?? false
+
                 guard let session = try? await client.newSession(cwd: configuration.sessionCWD) else {
                     throw ACPClientError.invalidResponse("session/new 无 sessionId")
                 }
@@ -164,8 +192,6 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         agentName = displayName
         status = .failed(message)
         activity = ""
-        answer = ""
-        displayAnswer = ""
     }
 
     /// 彻底断开：回收进程并清空会话状态。
@@ -176,15 +202,23 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         sessionId = nil
         status = .idle
         activity = ""
-        answer = ""
-        displayAnswer = ""
-        throttle.reset()
+        resetConversation()
         stopIdleTimer()
     }
 
     private func teardownClient() {
         client?.stop()
         client = nil
+    }
+
+    private func resetConversation() {
+        messages = []
+        streamingMessageID = nil
+        streamingDisplayText = ""
+        attachments = []
+        commands = []
+        notice = ""
+        throttle.reset()
     }
 
     // MARK: - 空闲回收
@@ -205,6 +239,7 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                 self.sessionId = nil
                 self.status = .idle
                 self.activity = "已空闲断开"
+                self.finishStreaming()
                 self.stopIdleTimer()
             }
         }
@@ -229,11 +264,20 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         blocks.append(contentsOf: attachments.map(\.block))
         let content = blocks
 
+        // 记录用户提问（含附件缩略图/文件名）。
+        let images = attachments.compactMap(\.previewData)
+        let fileNames = attachments.filter { $0.previewData == nil }.map(\.name)
+        messages.append(ChatMessage(role: .user, text: text, images: images, fileNames: fileNames))
+
+        // 追加 agent 流式占位。
+        let agentMessage = ChatMessage(role: .agent, isStreaming: true)
+        messages.append(agentMessage)
+        streamingMessageID = agentMessage.id
+        streamingDisplayText = ""
+
         input = ""
         attachments = []
         notice = ""
-        answer = ""
-        displayAnswer = ""
         throttle.reset()
         activity = "思考中…"
         status = .running
@@ -246,13 +290,18 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
                     self.status = .ready
                     self.activity = ""
                 }
-                self.forceDisplayFlush()
+                self.finishStreaming()
             } catch {
                 self.status = .failed(error.localizedDescription)
                 self.activity = ""
-                self.forceDisplayFlush()
+                self.finishStreaming()
             }
         }
+    }
+
+    func cancel() {
+        guard let client, let sessionId else { return }
+        client.cancel(sessionId: sessionId)
     }
 
     // MARK: - 附件
@@ -362,11 +411,6 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         return nil
     }
 
-    func cancel() {
-        guard let client, let sessionId else { return }
-        client.cancel(sessionId: sessionId)
-    }
-
     // MARK: - 权限
 
     func choosePermission(optionId: String) {
@@ -405,9 +449,8 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         touch()
         switch event {
         case let .agentText(text):
-            answer += text
+            appendAgentText(text)
             if pendingPermission == nil { activity = "" }
-            scheduleDisplayFlush()
         case .agentThought:
             if status == .running, pendingPermission == nil { activity = "思考中…" }
         case let .toolCall(title):
@@ -428,24 +471,34 @@ final class ChatSessionModel: ObservableObject, @unchecked Sendable {
         sessionId = nil
         status = .failed("agent 已退出（code \(code)）")
         activity = ""
-        forceDisplayFlush()
+        finishStreaming()
     }
 
-    // MARK: - 渲染节流
+    // MARK: - 流式渲染
+
+    private func appendAgentText(_ chunk: String) {
+        guard let id = streamingMessageID,
+              let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[index].text += chunk
+        scheduleDisplayFlush()
+    }
+
+    /// 结束当前流式消息（跟随其显示文本）。
+    private func finishStreaming() {
+        if let id = streamingMessageID, let index = messages.firstIndex(where: { $0.id == id }) {
+            messages[index].isStreaming = false
+        }
+        streamingMessageID = nil
+        streamingDisplayText = ""
+    }
 
     /// 回答增量到达时调用：按 150ms 节流刷新 Markdown 快照。
     private func scheduleDisplayFlush() {
         throttle.submit { [weak self] in
-            guard let self else { return }
-            self.displayAnswer = self.answer
-        }
-    }
-
-    /// 回答结束/失败时立即刷新，保证渲染完整内容。
-    private func forceDisplayFlush() {
-        throttle.force { [weak self] in
-            guard let self else { return }
-            self.displayAnswer = self.answer
+            guard let self,
+                  let id = self.streamingMessageID,
+                  let message = self.messages.first(where: { $0.id == id }) else { return }
+            self.streamingDisplayText = message.text
         }
     }
 }

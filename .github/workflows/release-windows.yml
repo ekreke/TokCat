@@ -47,11 +47,19 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          swift build -c release --product TokCatCli --static-swift-stdlib
-          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-cli::static swift build failed"; exit 1 }
+          swift build -c release --product TokCatCli
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-cli::swift build failed"; exit 1 }
           $bin = (swift build -c release --product TokCatCli --show-bin-path).Trim()
-          New-Item -ItemType Directory -Force -Path "windows/TokCat.Windows/Payload" | Out-Null
-          Copy-Item (Join-Path $bin "TokCatCli.exe") "windows/TokCat.Windows/Payload/TokCatCli.exe" -Force
+
+          $payload = "windows/TokCat.Windows/Payload"
+          New-Item -ItemType Directory -Force -Path $payload | Out-Null
+          Copy-Item (Join-Path $bin "TokCatCli.exe") "$payload/TokCatCli.exe" -Force
+
+          # Windows 上 Swift 运行时是动态库：一并打包（与 CLI 同目录）。
+          $core = Get-ChildItem -Recurse -Filter swiftCore.dll -Path "$env:LOCALAPPDATA\Programs\Swift" -ErrorAction SilentlyContinue |
+                  Select-Object -First 1
+          if (-not $core) { Write-Host "::error title=win-runtime::swiftCore.dll not found"; exit 1 }
+          Copy-Item "$($core.Directory.FullName)\*.dll" $payload -Force
 
           dotnet publish windows/TokCat.Windows/TokCat.Windows.csproj `
             -c Release -r win-x64 --self-contained true `
@@ -61,6 +69,18 @@ jobs:
             -p:Version=$env:VERSION -o build/win
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-publish::dotnet publish failed"; exit 1 }
           if (-not (Test-Path "build/win/TokCat.exe")) { Write-Host "::error title=win-singlefile::TokCat.exe missing"; exit 1 }
+
+          # 冒烟：清空 PATH 后运行解压出的 CLI，确保产物自包含。
+          $smoke = Join-Path $env:TEMP "tokcat-smoke"
+          Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $smoke | Out-Null
+          Copy-Item "$payload\*" $smoke -Force
+          $oldPath = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & "$smoke\TokCatCli.exe" version
+          $code = $LASTEXITCODE
+          $env:PATH = $oldPath
+          if ($code -ne 0) { Write-Host "::error title=win-smoke::TokCatCli.exe failed to run ($code)"; exit 1 }
 
           # 主产物：单文件 exe（稳定文件名，便于 releases/latest/download 直链）
           Copy-Item "build/win/TokCat.exe" "build/TokCat.exe" -Force

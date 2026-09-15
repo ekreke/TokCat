@@ -17,7 +17,7 @@ struct ComposerTextView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = PasteAwareTextView()
+        let textView = PasteAwareTextView(frame: NSRect(x: 0, y: 0, width: 240, height: 34))
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.isEditable = true
@@ -30,6 +30,16 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.registerForDraggedTypes([.fileURL, .tiff, .png])
+
+        // 关键：让文档视图随滚动视图宽度自适应，否则宽度为 0、文字不可见。
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+
         textView.string = text
         textView.applyCallbacks(
             onSubmit: onSubmit,
@@ -55,8 +65,10 @@ struct ComposerTextView: NSViewRepresentable {
             onPasteFiles: onPasteFiles
         )
         textView.isEditable = isEnabled
+        // 仅在外部改动（如补全命令/清空）时回写，避免打断正在进行的输入。
         if textView.string != text {
             textView.string = text
+            textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
         }
         if focused, textView.window?.firstResponder !== textView {
             DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
@@ -70,6 +82,10 @@ struct ComposerTextView: NSViewRepresentable {
               let container = textView.textContainer else {
             return CGSize(width: width, height: 36)
         }
+        container.containerSize = NSSize(
+            width: max(1, width - textView.textContainerInset.width * 2),
+            height: CGFloat.greatestFiniteMagnitude
+        )
         layoutManager.ensureLayout(for: container)
         let used = layoutManager.usedRect(for: container).height + textView.textContainerInset.height * 2
         return CGSize(width: width, height: min(max(used, 34), 96))
@@ -117,6 +133,25 @@ final class PasteAwareTextView: NSTextView {
             return
         }
         super.paste(sender)
+    }
+
+    /// 直接拦截 ⌘V：不依赖 Edit 菜单的启用状态（纯图片粘贴板会让菜单 Paste 变灰）。
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "v" {
+            let pasteboard = NSPasteboard.general
+            if let urls = Self.fileURLs(from: pasteboard), !urls.isEmpty {
+                onPasteFiles?(urls)
+                return true
+            }
+            if let data = Self.imageData(from: pasteboard) {
+                onPasteImage?(data)
+                return true
+            }
+            paste(nil)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 
     override func insertNewline(_ sender: Any?) {
