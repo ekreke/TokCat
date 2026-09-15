@@ -21,7 +21,10 @@ final class ChatPopoverController: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: makeRootView(onSetup: onSetup))
+        let hosting = NSHostingController(rootView: makeRootView(onSetup: onSetup))
+        // 宿主不随内容自动改尺寸，避免输入框变高时带动弹窗抖动/跳动。
+        hosting.sizingOptions = []
+        popover.contentViewController = hosting
         popover.contentSize = NSSize(width: settings.chatWidth, height: settings.chatHeight)
     }
 
