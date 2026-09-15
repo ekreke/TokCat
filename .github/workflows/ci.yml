@@ -123,6 +123,10 @@ jobs:
           if (-not $core) { Write-Host "::error title=win-runtime::swiftCore.dll not found"; exit 1 }
           Copy-Item "$($core.Directory.FullName)\*.dll" $payload -Force
 
+          # 展示打包内容（可匿名读取的 notice）
+          $names = (Get-ChildItem $payload -File | ForEach-Object { $_.Name }) -join ","
+          Write-Host "::notice title=win-payload::$names"
+
           dotnet publish windows/TokCat.Windows/TokCat.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o build/win
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=win-publish::dotnet publish failed"; exit 1 }
           if (-not (Test-Path "build/win/TokCat.exe")) { Write-Host "::error title=win-singlefile::TokCat.exe missing"; exit 1 }
@@ -134,12 +138,30 @@ jobs:
           Copy-Item "$payload\*" $smoke -Force
           $oldPath = $env:PATH
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-          & "$smoke\TokCatCli.exe" version
+          $smokeOut = & "$smoke\TokCatCli.exe" version 2>&1
           $code = $LASTEXITCODE
           $env:PATH = $oldPath
           if ($code -ne 0) { Write-Host "::error title=win-smoke::TokCatCli.exe failed to run ($code)"; exit 1 }
+          Write-Host "::notice title=win-cli-version::$smokeOut"
 
           Compress-Archive -Path "build/win/*" -DestinationPath "build/TokCat-win-x64.zip" -Force
+
+          # 端到端：实际运行发布的单文件 exe，验证它自解压并跑通内嵌 CLI。
+          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\TokCat" -ErrorAction SilentlyContinue
+          Start-Process -FilePath (Resolve-Path "build/win/TokCat.exe")
+          Start-Sleep -Seconds 30
+          $cli = "$env:LOCALAPPDATA\TokCat\TokCatCli.exe"
+          if (-not (Test-Path $cli)) {
+            Write-Host "::error title=win-e2e::TokCatCli.exe was not extracted by TokCat.exe"
+            Get-Process TokCat -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            exit 1
+          }
+          $dllCount = (Get-ChildItem "$env:LOCALAPPDATA\TokCat\*.dll" -ErrorAction SilentlyContinue | Measure-Object).Count
+          $e2eOut = & $cli version 2>&1
+          $e2eCode = $LASTEXITCODE
+          Get-Process TokCat -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Write-Host "::notice title=win-e2e::extracted_dlls=$dllCount cli='$e2eOut' exit=$e2eCode"
+          if ($e2eCode -ne 0 -or $dllCount -lt 1) { Write-Host "::error title=win-e2e-fail::end-to-end validation failed"; exit 1 }
       - name: Upload Windows artifact
         if: success()
         uses: actions/upload-artifact@v4
