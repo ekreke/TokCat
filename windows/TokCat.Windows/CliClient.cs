@@ -16,7 +16,7 @@ public sealed record PermissionOption(string OptionId, string? Name, string? Kin
 public sealed record PermissionRequest(string Title, IReadOnlyList<PermissionOption> Options);
 public sealed record AgentCapabilities(bool Image, bool EmbeddedContext);
 
-public sealed class AgentEventArgs : EventArgs
+public sealed record AgentEventArgs
 {
     public string Kind { get; init; } = string.Empty;
     public string Text { get; init; } = string.Empty;

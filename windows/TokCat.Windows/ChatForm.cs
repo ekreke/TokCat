@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Text;
+using System.Text.Json;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -598,6 +599,15 @@ function scroll(){window.scrollTo(0,document.body.scrollHeight);}
         if (IsHandleCreated)
         {
             try { BeginInvoke(action); } catch { }
+        }
+    }
+
+    private void openFilePicker()
+    {
+        using var panel = new OpenFileDialog { Multiselect = true, CheckFileExists = true };
+        if (panel.ShowDialog(this) == DialogResult.OK)
+        {
+            HandleFiles(panel.FileNames);
         }
     }
 
