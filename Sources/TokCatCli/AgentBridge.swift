@@ -63,6 +63,7 @@ final class AgentBridge {
         self.agentName = displayName
         lock.unlock()
 
+        let name = displayName
         Task { @MainActor in
             do {
                 try client.launch()
@@ -77,7 +78,7 @@ final class AgentBridge {
                 emit([
                     "event": "agent.ready",
                     "sessionId": session.sessionId,
-                    "agentName": displayName,
+                    "agentName": name,
                     "capabilities": [
                         "image": caps?.image ?? false,
                         "embeddedContext": caps?.embeddedContext ?? false,

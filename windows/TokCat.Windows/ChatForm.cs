@@ -68,7 +68,7 @@ function scroll(){window.scrollTo(0,document.body.scrollHeight);}
     private readonly ListBox _commandList = new();
     private readonly Button _sendButton = new();
     private readonly Button _attachButton = new();
-    private readonly Timer _renderTimer = new() { Interval = 150 };
+    private readonly System.Windows.Forms.Timer _renderTimer = new() { Interval = 150 };
 
     private readonly List<AgentCommand> _commands = new();
     private readonly List<OutContent> _attachments = new();
