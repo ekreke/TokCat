@@ -116,21 +116,14 @@ public final class RateEngine {
             samples.append(contentsOf: produced)
         }
 
-        aggregator.ingest(samples)
-        let rate = aggregator.tick(now: now)
-
-        // 按来源分别累计本 tick 的消耗，供趋势图分客户端绘制。
-        var perSource: [String: (units: Double, usage: TokenUsage)] = [:]
+        // 逐样本处理：按事件时间写入历史，使"单秒峰值/合计"落在真实的秒上；
+        // 超出历史窗口的旧样本不会被任何秒匹配到，自然被忽略。
         for sample in samples {
             let units = aggregator.converter.units(for: sample)
-            var entry = perSource[sample.sourceId] ?? (0, .zero)
-            entry.units += units
-            entry.usage += sample.usage
-            perSource[sample.sourceId] = entry
+            aggregator.ingest(sample, units: units)
+            history.record(sourceId: sample.sourceId, usage: sample.usage, units: units, at: sample.at)
         }
-        for (sourceId, entry) in perSource {
-            history.record(sourceId: sourceId, usage: entry.usage, units: entry.units, at: now)
-        }
+        let rate = aggregator.tick(now: now)
 
         stateStore?.saveIfNeeded(now: now)
 
@@ -148,7 +141,7 @@ public final class RateEngine {
         if Debug.enabled {
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
             Debug.log(String(format: "tick %.1fms samples=%d rate=%.1f trendSources=%d",
-                             elapsedMs, samples.count, rate, perSource.count))
+                             elapsedMs, samples.count, rate, Set(samples.map(\.sourceId)).count))
         }
 
         DispatchQueue.main.async { [weak self] in

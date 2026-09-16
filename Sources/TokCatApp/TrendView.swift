@@ -80,8 +80,15 @@ final class TrendModel {
         let count = trend.timestamps.count
         let startIndex = max(0, count - rangeSeconds)
 
-        data.total = trend.total[startIndex...].reduce(0, +)
-        data.peak = trend.total[startIndex...].max() ?? 0
+        let windowed = trend.total[startIndex...]
+        data.total = windowed.reduce(0, +)
+        data.peak = windowed.max() ?? 0
+
+        // 最近 1 秒：取最近一个**完整**秒（倒数第二个桶），避免显示进行中的半截秒。
+        let completedIndex = max(startIndex, count - 2)
+        if completedIndex < count {
+            data.rate = trend.total[completedIndex]
+        }
 
         // 降采样：把相邻若干秒合成一个点。
         let step = max(1, Int((Double(rangeSeconds) / Double(chartPointBudget)).rounded()))
@@ -97,10 +104,11 @@ final class TrendModel {
             var index = 0
             while index < slice.count {
                 let end = min(index + step, slice.count)
+                let span = max(1, end - index)
                 let sum = slice[index..<end].reduce(0, +)
                 points.append(TrendPoint(
                     date: trend.timestamps[startIndex + end - 1],
-                    value: sum
+                    value: sum / Double(span)
                 ))
                 index = end
             }
@@ -121,7 +129,8 @@ final class TrendModel {
 
         result.sort { $0.subtotal > $1.subtotal }
         data.series = Array(result.prefix(maxLegendSeries))
-        data.yMax = TrendMath.niceMax(data.series.flatMap { $0.points.map(\.value) }.max() ?? 0)
+        let linePeak = data.series.flatMap { $0.points.map(\.value) }.max() ?? 0
+        data.yMax = TrendMath.niceMax(max(linePeak, data.peak))
         return data
     }
 }
@@ -157,9 +166,9 @@ struct TrendChartView: View {
 
     private var stats: some View {
         HStack(spacing: 16) {
-            stat("当前速率", Formatting.rate(data.rate, currency: data.currency))
+            stat("最近 1 秒", Formatting.rate(data.rate, currency: data.currency))
             stat("合计", Formatting.units(data.total, currency: data.currency))
-            stat("峰值", Formatting.units(data.peak, currency: data.currency))
+            stat("单秒峰值", Formatting.rate(data.peak, currency: data.currency))
             Spacer(minLength: 0)
         }
     }

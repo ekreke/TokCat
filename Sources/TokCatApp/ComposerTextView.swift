@@ -13,6 +13,8 @@ struct ComposerTextView: NSViewRepresentable {
     @Binding var focused: Bool
     var isEnabled: Bool
     var placeholder: String
+    /// 自适应高度的上限（约弹窗可用高度的 20%）。
+    var maxHeight: CGFloat
     var onSubmit: () -> Void
     var onPasteImage: (Data) -> Void
     var onPasteFiles: ([URL]) -> Void
@@ -88,9 +90,46 @@ struct ComposerTextView: NSViewRepresentable {
         }
     }
 
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
+        let width = proposal.width ?? nsView.contentSize.width
+        guard let textView = context.coordinator.textView,
+              let layoutManager = textView.layoutManager,
+              let container = textView.textContainer else {
+            return CGSize(width: max(1, width), height: 52)
+        }
+
+        let font = textView.font ?? NSFont.systemFont(ofSize: 13)
+        let lineHeight = max(1, layoutManager.defaultLineHeight(for: font))
+        let insets = textView.textContainerInset.height * 2
+        // 至少 2 行：保证完整占位符提示可换行显示。
+        let minimum = lineHeight * 2 + insets
+
+        // 关键：只把文本视图宽度对齐到提案宽度，让 widthTracksTextView 自行推导容器宽度；
+        // 绝不手动改 container.containerSize（那是上一版布局错乱/抖动的根因）。
+        if abs(textView.frame.width - width) > 0.5 {
+            textView.frame.size.width = width
+        }
+        layoutManager.ensureLayout(for: container)
+
+        // 按整行离散步进，消除亚像素高度摆动。
+        let contentHeight = layoutManager.usedRect(for: container).height
+        let lines = max(1, Int((contentHeight / lineHeight).rounded(.up)))
+        let desired = CGFloat(lines) * lineHeight + insets
+
+        var target = min(max(desired, minimum), max(maxHeight, minimum))
+        // 1pt 迟滞，避免边界处来回抖动。
+        let last = context.coordinator.lastMeasuredHeight
+        if last >= minimum, abs(target - last) < 1 {
+            target = last
+        }
+        context.coordinator.lastMeasuredHeight = target
+        return CGSize(width: max(1, width), height: target)
+    }
+
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ComposerTextView
         weak var textView: PasteAwareTextView?
+        var lastMeasuredHeight: CGFloat = 0
         private var keyMonitor: Any?
 
         init(_ parent: ComposerTextView) {
