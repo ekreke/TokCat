@@ -29,7 +29,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _snapshotTimer;
     private readonly HashSet<string> _appliedOverrides = new();
 
-    private StatusForm? _statusForm;
+    private ChatForm? _chatForm;
     private readonly Control _marshal = new Control();
     private EventWaitHandle? _activateEvent;
 
@@ -86,7 +86,6 @@ public sealed class TrayApplicationContext : ApplicationContext
             _snapshot = latest;
             _rate = latest.Rate;
             _currency = latest.Currency;
-            _statusForm?.UpdateSnapshot(latest);
             Render();
         }
 
@@ -163,23 +162,21 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private void OnTrayMouseClick(object? sender, MouseEventArgs e)
     {
-        if (e.Button == MouseButtons.Left) ToggleStatusForm();
+        if (e.Button == MouseButtons.Left) ToggleChat();
     }
 
-    private void ToggleStatusForm()
+    /// <summary>左键：打开 / 隐藏 Chat 窗口（对齐 macOS 行为）。</summary>
+    private void ToggleChat()
     {
-        if (_statusForm is { Visible: true })
+        if (_chatForm is { Visible: true })
         {
-            _statusForm.Hide();
+            _chatForm.Hide();
             return;
         }
 
-        _statusForm ??= new StatusForm();
-        _statusForm.UpdateSnapshot(_snapshot);
-        var cursor = Cursor.Position;
-        _statusForm.Location = new Point(cursor.X - 140, Math.Max(0, cursor.Y - 220));
-        _statusForm.Show();
-        _statusForm.Activate();
+        _chatForm ??= new ChatForm(_cli, _settings);
+        _chatForm.Show();
+        _chatForm.Activate();
     }
 
     // MARK: - 单实例激活
@@ -218,15 +215,15 @@ public sealed class TrayApplicationContext : ApplicationContext
         thread.Start();
     }
 
-    /// <summary>第二个实例请求激活：显示主窗口（Chat，暂为状态窗）。</summary>
+    /// <summary>第二个实例请求激活：显示 Chat。</summary>
     private void ActivateFromExternal()
     {
-        if (_statusForm is { Visible: true })
+        if (_chatForm is { Visible: true })
         {
-            _statusForm.Activate();
+            _chatForm.Activate();
             return;
         }
-        ToggleStatusForm();
+        ToggleChat();
     }
 
     // MARK: - 菜单
@@ -365,7 +362,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _tray.Dispose();
         _cli.Dispose();
         _pack.Dispose();
-        _statusForm?.Dispose();
+        _chatForm?.Dispose();
         ExitThread();
     }
 
@@ -378,7 +375,7 @@ public sealed class TrayApplicationContext : ApplicationContext
             _tray.Dispose();
             _cli.Dispose();
             _pack.Dispose();
-            _statusForm?.Dispose();
+            _chatForm?.Dispose();
             _activateEvent?.Dispose();
             _marshal.Dispose();
         }

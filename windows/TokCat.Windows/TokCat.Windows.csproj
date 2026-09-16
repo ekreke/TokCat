@@ -13,6 +13,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Markdig" Version="0.37.0" />
+    <PackageReference Include="ColorCode.Core" Version="2.0.15" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 内嵌猫精灵（发布为单个 exe，运行时自解压）。 -->
     <EmbeddedResource Include="..\..\Sources\TokCatApp\Resources\RunCatCat\*.png">
       <LogicalName>%(Filename)%(Extension)</LogicalName>

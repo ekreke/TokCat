@@ -12,6 +12,9 @@ public sealed class AppSettings
     public double Sensitivity { get; set; } = 1.0;
     public double SaturationRate { get; set; } = 300;
     public double IdleFps { get; set; } = 2;
+    /// agent 工作目录（Chat 的 cwd）。
+    public string AgentWorkingDirectory { get; set; } =
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public Dictionary<string, bool> SourceOverrides { get; set; } = new();
 
     [JsonIgnore]
