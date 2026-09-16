@@ -31,42 +31,6 @@ default:
     exit(2)
 }
 
-enum TokCatVersion {
-    static var string: String { TokCatBuildVersion.string }
-}
-
-// MARK: - 协议输出
-
-let stdoutLock = NSLock()
-
-func emit(_ object: [String: Any]) {
-    guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
-    var line = data
-    line.append(0x0A)
-    stdoutLock.lock()
-    FileHandle.standardOutput.write(line)
-    stdoutLock.unlock()
-}
-
-func emitOK(_ id: Any?) {
-    emit(["id": id ?? NSNull(), "ok": true])
-}
-
-func emitError(_ id: Any?, _ message: String) {
-    emit(["id": id ?? NSNull(), "ok": false, "error": message])
-}
-
-func snapshotEvent(_ snapshot: RateSnapshot, session: ServeSession) -> [String: Any] {
-    [
-        "event": "snapshot",
-        "rate": snapshot.rate,
-        "totalUnits": snapshot.totalUnits,
-        "currency": snapshot.unitIsCurrency,
-        "windowSeconds": snapshot.windowSeconds,
-        "sources": session.sourceStates(),
-    ]
-}
-
 // MARK: - serve
 
 final class ServeSession {
@@ -125,8 +89,20 @@ final class ServeSession {
     }
 }
 
+func snapshotEvent(_ snapshot: RateSnapshot, session: ServeSession) -> [String: Any] {
+    [
+        "event": "snapshot",
+        "rate": snapshot.rate,
+        "totalUnits": snapshot.totalUnits,
+        "currency": snapshot.unitIsCurrency,
+        "windowSeconds": snapshot.windowSeconds,
+        "sources": session.sourceStates(),
+    ]
+}
+
 func runServe() {
     let session = ServeSession()
+    let bridge = AgentBridge()
     session.onSnapshot { snapshot in
         emit(snapshotEvent(snapshot, session: session))
     }
@@ -137,9 +113,10 @@ func runServe() {
         while let line = readLine(strippingNewline: true) {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-            handleCommand(trimmed, session: session)
+            handleCommand(trimmed, session: session, bridge: bridge)
         }
         // stdin 关闭：退出。
+        bridge.disconnect()
         session.stop()
         exit(0)
     }
@@ -147,7 +124,7 @@ func runServe() {
     dispatchMain()
 }
 
-func handleCommand(_ line: String, session: ServeSession) {
+func handleCommand(_ line: String, session: ServeSession, bridge: AgentBridge) {
     guard let data = line.data(using: .utf8),
           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         emit(["event": "error", "message": "invalid json"])
@@ -172,8 +149,20 @@ func handleCommand(_ line: String, session: ServeSession) {
         session.reset(); emitOK(id)
     case "sources":
         emit(["id": id ?? NSNull(), "ok": true, "sources": session.sourceStates()])
+    case "agent.connect":
+        bridge.connect(params: params); emitOK(id)
+    case "agent.prompt":
+        bridge.prompt(params: params); emitOK(id)
+    case "agent.cancel":
+        bridge.cancel(); emitOK(id)
+    case "agent.permission.reply":
+        bridge.replyPermission(params: params); emitOK(id)
+    case "agent.disconnect":
+        bridge.disconnect(); emitOK(id)
+    case "agent.status":
+        emit(["id": id ?? NSNull(), "ok": true, "running": bridge.isRunning])
     case "quit":
-        session.stop(); exit(0)
+        bridge.disconnect(); session.stop(); exit(0)
     default:
         emitError(id, "unknown cmd: \(cmd)")
     }
