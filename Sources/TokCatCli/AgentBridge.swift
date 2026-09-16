@@ -23,8 +23,8 @@ final class AgentBridge {
         let mode = params["mode"] as? String ?? "local"
         let cwd = params["cwd"] as? String ?? FileManager.default.homeDirectoryForCurrentUser.path
 
-        var configuration: ACPLaunchConfiguration?
-        var displayName = "Hermes"
+        let configuration: ACPLaunchConfiguration?
+        let displayName: String
 
         if mode == "remote", let remote = params["remote"] as? [String: Any] {
             let target = (remote["target"] as? String ?? "").trimmingCharacters(in: .whitespaces)
@@ -40,6 +40,7 @@ final class AgentBridge {
             displayName = target.isEmpty ? "Hermes · 远程" : "Hermes · \(target)"
         } else {
             configuration = AgentDetector.localLaunchConfiguration(cwd: cwd)
+            displayName = "Hermes"
         }
 
         guard let configuration else {

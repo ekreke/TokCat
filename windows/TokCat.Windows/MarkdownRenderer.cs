@@ -48,9 +48,7 @@ internal static class MarkdownRenderer
                     {
                         return "<pre><code>" + System.Net.WebUtility.HtmlEncode(code) + "</code></pre>";
                     }
-                    var sb = new StringBuilder();
-                    new HtmlFormatter().WriteHtml(code, language, t => sb.Append(t));
-                    return sb.ToString();
+                    return new HtmlFormatter().GetHtmlString(code, language);
                 }
                 catch
                 {
