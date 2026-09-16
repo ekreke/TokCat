@@ -113,23 +113,16 @@ struct HermesSettingsView: View {
     private func field(_ title: String, text: Binding<String>, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.caption).foregroundStyle(.secondary)
-            TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
+            // 不用 SwiftUI TextField：其 field editor 在 macOS 15.2 上点按/拖选
+            // 会触发 TextKit 2 同步死循环（详见 SingleLineTextField 头注释）。
+            SingleLineTextField(text: text, placeholder: placeholder)
+                .frame(height: 24)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var logView: some View {
-        ScrollView {
-            Text(model.log.isEmpty ? "安装 / 测试日志会显示在这里。" : model.log)
-                .font(.system(.caption2, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(height: 150)
-        .padding(6)
-        .background(Color(nsColor: .textBackgroundColor))
-        .cornerRadius(6)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+        ReadOnlyLogTextView(text: model.log)
+            .frame(height: 150)
     }
 }
