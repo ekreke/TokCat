@@ -406,11 +406,15 @@ struct ChatView: View {
     // MARK: - 输入
 
     private func inputBar(maxComposerHeight: CGFloat) -> some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 6) {
             Button(action: openFilePicker) {
-                Image(systemName: "paperclip")
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Circle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
             .help("添加文件")
             .disabled(!isInteractive)
 
@@ -424,24 +428,37 @@ struct ChatView: View {
                 onPasteImage: handlePastedImage,
                 onPasteFiles: handleFiles
             )
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(nsColor: .textBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.secondary.opacity(0.35), lineWidth: 1)
-            )
 
             if model.status == .running {
-                Button("停止") { model.cancel() }
-                    .buttonStyle(.bordered)
+                circleButton(systemName: "stop.fill", enabled: true) { model.cancel() }
+                    .help("停止")
             } else {
-                Button("发送", action: send)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!model.canSend)
+                circleButton(systemName: "arrow.up", enabled: model.canSend, action: send)
+                    .help("发送")
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color(nsColor: .textBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func circleButton(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(enabled ? Color.accentColor : Color.secondary.opacity(0.45)))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     private var isInteractive: Bool {

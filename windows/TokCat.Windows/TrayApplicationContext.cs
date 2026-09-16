@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -29,6 +30,8 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly HashSet<string> _appliedOverrides = new();
 
     private StatusForm? _statusForm;
+    private readonly Control _marshal = new Control();
+    private EventWaitHandle? _activateEvent;
 
     private Snapshot _snapshot = Snapshot.Empty;
     private double _rate;
@@ -49,6 +52,10 @@ public sealed class TrayApplicationContext : ApplicationContext
         _menu.Opening += (_, _) => RebuildMenu();
         _tray.ContextMenuStrip = _menu;
         _tray.MouseClick += OnTrayMouseClick;
+
+        // 单实例：在 UI 线程建好 marshal 句柄，并监听第二个实例的激活信号。
+        _ = _marshal.Handle;
+        StartActivationListener();
 
         _cli = new CliClient();
         if (!_cli.Start())
@@ -173,6 +180,53 @@ public sealed class TrayApplicationContext : ApplicationContext
         _statusForm.Location = new Point(cursor.X - 140, Math.Max(0, cursor.Y - 220));
         _statusForm.Show();
         _statusForm.Activate();
+    }
+
+    // MARK: - 单实例激活
+
+    private const string ActivateEventName = "TokCat.SingleInstance.Activate";
+
+    private void StartActivationListener()
+    {
+        try
+        {
+            _activateEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName);
+        }
+        catch
+        {
+            return;
+        }
+
+        var thread = new Thread(() =>
+        {
+            var handle = _activateEvent;
+            if (handle is null) return;
+            while (true)
+            {
+                try
+                {
+                    if (!handle.WaitOne()) continue;
+                }
+                catch
+                {
+                    return;
+                }
+                try { _marshal.BeginInvoke(new Action(ActivateFromExternal)); } catch { }
+            }
+        })
+        { IsBackground = true, Name = "tokcat.activate" };
+        thread.Start();
+    }
+
+    /// <summary>第二个实例请求激活：显示主窗口（Chat，暂为状态窗）。</summary>
+    private void ActivateFromExternal()
+    {
+        if (_statusForm is { Visible: true })
+        {
+            _statusForm.Activate();
+            return;
+        }
+        ToggleStatusForm();
     }
 
     // MARK: - 菜单
@@ -325,6 +379,8 @@ public sealed class TrayApplicationContext : ApplicationContext
             _cli.Dispose();
             _pack.Dispose();
             _statusForm?.Dispose();
+            _activateEvent?.Dispose();
+            _marshal.Dispose();
         }
         base.Dispose(disposing);
     }

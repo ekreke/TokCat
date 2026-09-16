@@ -30,7 +30,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: 13)
-        textView.textContainerInset = NSSize(width: 6, height: 8)
+        textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
@@ -91,32 +91,44 @@ struct ComposerTextView: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
-        let width = proposal.width ?? nsView.contentSize.width
+        let width = proposal.width ?? (nsView.frame.width > 0 ? nsView.frame.width : 240)
         guard let textView = context.coordinator.textView,
               let layoutManager = textView.layoutManager,
               let container = textView.textContainer else {
-            return CGSize(width: max(1, width), height: 52)
+            return CGSize(width: max(1, width), height: 44)
         }
 
         let font = textView.font ?? NSFont.systemFont(ofSize: 13)
         let lineHeight = max(1, layoutManager.defaultLineHeight(for: font))
-        let insets = textView.textContainerInset.height * 2
-        // 至少 2 行：保证完整占位符提示可换行显示。
-        let minimum = lineHeight * 2 + insets
+        let inset = textView.textContainerInset
+        let padding = container.lineFragmentPadding
+        let insets = inset.height * 2
 
-        // 关键：只把文本视图宽度对齐到提案宽度，让 widthTracksTextView 自行推导容器宽度；
-        // 绝不手动改 container.containerSize（那是上一版布局错乱/抖动的根因）。
+        // 只把文本视图宽度对齐提案宽度，让 widthTracksTextView 推导容器宽度；
+        // 绝不手动改 container.containerSize（那是布局错乱/抖动的根因）。
         if abs(textView.frame.width - width) > 0.5 {
             textView.frame.size.width = width
         }
         layoutManager.ensureLayout(for: container)
 
-        // 按整行离散步进，消除亚像素高度摆动。
+        // 按整行离散步进，消除亚像素摆动。
         let contentHeight = layoutManager.usedRect(for: container).height
         let lines = max(1, Int((contentHeight / lineHeight).rounded(.up)))
-        let desired = CGFloat(lines) * lineHeight + insets
+        let textHeight = max(CGFloat(lines) * lineHeight, contentHeight)
 
-        var target = min(max(desired, minimum), max(maxHeight, minimum))
+        // 空态：至少容纳完整占位符（实测高度），避免被裁切。
+        var minimum = lineHeight + insets
+        if textView.string.isEmpty, let placeholder = textView.placeholder, !placeholder.isEmpty {
+            let available = max(1, width - inset.width * 2 - padding * 2)
+            let rect = (placeholder as NSString).boundingRect(
+                with: NSSize(width: available, height: CGFloat.greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: font]
+            )
+            minimum = max(minimum, (rect.height).rounded(.up) + insets)
+        }
+
+        var target = min(max(textHeight + insets, minimum), max(maxHeight, minimum))
         // 1pt 迟滞，避免边界处来回抖动。
         let last = context.coordinator.lastMeasuredHeight
         if last >= minimum, abs(target - last) < 1 {
