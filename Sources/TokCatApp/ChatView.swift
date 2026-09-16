@@ -11,6 +11,7 @@ struct ChatView: View {
     /// 右下角拖拽手柄的尺寸增量回调（由控制器换算成弹窗尺寸）。
     var onResize: ((CGSize) -> Void)?
     @State private var composerFocused = true
+    @State private var composerHeight: CGFloat = 34
     @State private var lastDrag: CGSize = .zero
     /// 是否自动跟随到底部（用户向上滚动后关闭）。
     @State private var autoFollow = true
@@ -420,14 +421,15 @@ struct ChatView: View {
 
             ComposerTextView(
                 text: $model.input,
+                height: $composerHeight,
                 focused: $composerFocused,
                 isEnabled: isInteractive,
-                placeholder: "发消息…（Enter 发送，Shift+Enter 换行，可直接粘贴图片/文件）",
                 maxHeight: maxComposerHeight,
                 onSubmit: send,
                 onPasteImage: handlePastedImage,
                 onPasteFiles: handleFiles
             )
+            .frame(height: composerHeight)
 
             if model.status == .running {
                 circleButton(systemName: "stop.fill", enabled: true) { model.cancel() }
