@@ -49,7 +49,7 @@ struct ComposerTextView: NSViewRepresentable {
             onPasteImage: onPasteImage,
             onPasteFiles: onPasteFiles
         )
-        textView.onSizeChanged = { [weak coordinator = context.coordinator] in
+        textView.onWidthChanged = { [weak coordinator = context.coordinator] in
             coordinator?.recomputeHeight()
         }
 
@@ -94,29 +94,38 @@ struct ComposerTextView: NSViewRepresentable {
         weak var textView: PasteAwareTextView?
         private var keyMonitor: Any?
         private var lastDispatchedHeight: CGFloat = 0
+        private var lastMeasuredText: String?
+        private var lastMeasuredWidth: CGFloat = 0
+        private let measurer = TextHeightMeasurer()
 
         init(_ parent: ComposerTextView) {
             self.parent = parent
         }
 
-        /// 由 AppKit 实测内容高度，按整行取整并 clamp 到上限，变化 ≥1pt 才回写绑定。
+        /// 用独立测量栈计算内容高度，按整行取整并 clamp 到上限，变化 ≥1pt 才回写绑定。
+        /// 输入（文本/宽度）未变化时直接跳过，避免 SwiftUI 更新反复触发测量。
+        /// 注意：绝不触碰 `textView.layoutManager`——那会在 TextKit 2 视图上
+        /// 惰性挂载 TextKit 1 布局器，两个布局器互相同步可致死循环。
         func recomputeHeight() {
-            guard let textView,
-                  let layoutManager = textView.layoutManager,
-                  let container = textView.textContainer,
-                  textView.bounds.width > 0 else { return }
+            guard let textView, textView.bounds.width > 0 else { return }
+
+            let width = max(0, textView.bounds.width - textView.textContainerInset.width * 2)
+            let text = textView.string
+            guard text != lastMeasuredText || abs(width - lastMeasuredWidth) > 0.5 else { return }
+            lastMeasuredText = text
+            lastMeasuredWidth = width
 
             let font = textView.font ?? NSFont.systemFont(ofSize: 13)
-            let lineHeight = max(1, layoutManager.defaultLineHeight(for: font))
+            let lineHeight = measurer.lineHeight(for: font)
             let insets = textView.textContainerInset.height * 2
 
-            layoutManager.ensureLayout(for: container)
-            let contentHeight = layoutManager.usedRect(for: container).height
+            let contentHeight = measurer.usedHeight(for: text, font: font, width: width)
             let lines = max(1, Int((contentHeight / lineHeight).rounded(.up)))
             let desired = CGFloat(lines) * lineHeight + insets
 
-            let upper = max(parent.maxHeight, minimumHeight())
-            let target = min(max(desired, minimumHeight()), upper)
+            let floor = lineHeight + insets
+            let upper = max(parent.maxHeight, floor)
+            let target = min(max(desired, floor), upper)
             if abs(target - lastDispatchedHeight) >= 1 {
                 lastDispatchedHeight = target
                 DispatchQueue.main.async { [weak self] in
@@ -124,14 +133,6 @@ struct ComposerTextView: NSViewRepresentable {
                     self.parent.height = target
                 }
             }
-        }
-
-        private func minimumHeight() -> CGFloat {
-            guard let textView,
-                  let layoutManager = textView.layoutManager,
-                  let font = textView.font ?? textView.font else { return 34 }
-            let lineHeight = max(1, layoutManager.defaultLineHeight(for: font))
-            return lineHeight + textView.textContainerInset.height * 2
         }
 
         /// 用本地事件监听拦截 ⌘V（早于菜单/窗口派发，最可靠）。
@@ -182,12 +183,43 @@ struct ComposerTextView: NSViewRepresentable {
     }
 }
 
+/// 独立于真实 textView 的 TextKit 1 测量栈。
+/// 不挂在任何视图上，仅供测高，避免在 TextKit 2 视图上触发双布局器同步。
+final class TextHeightMeasurer {
+    private let storage = NSTextStorage()
+    private let layoutManager = NSLayoutManager()
+    private let container: NSTextContainer
+
+    init() {
+        container = NSTextContainer(containerSize: .zero)
+        container.widthTracksTextView = false
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(container)
+    }
+
+    func lineHeight(for font: NSFont) -> CGFloat {
+        max(1, layoutManager.defaultLineHeight(for: font))
+    }
+
+    /// 返回给定宽度下折行后的内容高度；空文本返回 0。
+    func usedHeight(for string: String, font: NSFont, width: CGFloat) -> CGFloat {
+        guard !string.isEmpty, width > 0 else { return 0 }
+        container.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
+        storage.setAttributedString(
+            NSAttributedString(string: string, attributes: [.font: font])
+        )
+        layoutManager.ensureLayout(for: container)
+        return layoutManager.usedRect(for: container).height
+    }
+}
+
 /// 拦截粘贴与回车、接收拖拽的 `NSTextView`。
 final class PasteAwareTextView: NSTextView {
     private var onSubmit: (() -> Void)?
     private var onPasteImage: ((Data) -> Void)?
     private var onPasteFiles: (([URL]) -> Void)?
-    var onSizeChanged: (() -> Void)?
+    var onWidthChanged: (() -> Void)?
+    private var widthChangePending = false
 
     func applyCallbacks(
         onSubmit: @escaping () -> Void,
@@ -236,14 +268,18 @@ final class PasteAwareTextView: NSTextView {
 
     // MARK: - 尺寸变化回调
 
+    /// 仅宽度变化时通知（高度变化由测量回写驱动，回调高度会形成反馈环）。
+    /// 延迟到下一个 runloop 并合并，避免在布局过程中重入测量。
     override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - frame.width) > 0.5
         super.setFrameSize(newSize)
-        onSizeChanged?()
-    }
-
-    override func layout() {
-        super.layout()
-        onSizeChanged?()
+        guard widthChanged, !widthChangePending else { return }
+        widthChangePending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.widthChangePending = false
+            self.onWidthChanged?()
+        }
     }
 
     // MARK: - 拖拽
