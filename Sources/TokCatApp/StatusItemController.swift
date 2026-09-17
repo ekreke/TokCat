@@ -193,26 +193,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(trendChartItem)
 
         menu.addItem(.separator())
-
-        menu.addItem(hermesMenu())
-        menu.addItem(animationMenu())
-        menu.addItem(metricMenu())
-        menu.addItem(sizeMenu())
-        menu.addItem(maxFPSMenu())
-        menu.addItem(sensitivityMenu())
-        menu.addItem(sourcesMenu())
-
-        menu.addItem(.separator())
-
-        menu.addItem(item("重载模型定价", #selector(reloadPricing)))
-        menu.addItem(item("重置统计", #selector(resetTotals)))
-
-        menu.addItem(.separator())
-
-        menu.addItem(loginItemMenu())
-
+        menu.addItem(settingsMenu())
         menu.addItem(.separator())
         menu.addItem(item("退出 TokCat", #selector(quit), key: "q"))
+    }
+
+    /// 「设置 ▸」：全部可调项收进二级子菜单，右键顶栏只留 趋势图 / 设置 / 退出。
+    private func settingsMenu() -> NSMenuItem {
+        let parent = NSMenuItem(title: "设置", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        submenu.addItem(hermesMenu())
+        submenu.addItem(animationMenu())
+        submenu.addItem(metricMenu())
+        submenu.addItem(sizeMenu())
+        submenu.addItem(maxFPSMenu())
+        submenu.addItem(sensitivityMenu())
+        submenu.addItem(sourcesMenu())
+
+        submenu.addItem(.separator())
+        submenu.addItem(item("重载模型定价", #selector(reloadPricing)))
+        submenu.addItem(item("重置统计", #selector(resetTotals)))
+
+        submenu.addItem(.separator())
+        submenu.addItem(loginItemMenu())
+
+        parent.submenu = submenu
+        return parent
     }
 
     /// 菜单顶部的趋势图（复用同一个 hosting view，避免每次重开都新建、首次也更快）。
@@ -251,7 +258,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         submenu.addItem(detail)
 
         submenu.addItem(.separator())
-        submenu.addItem(item("设置…", #selector(openHermesSettings)))
+        submenu.addItem(item("Hermes 设置…", #selector(openHermesSettings)))
         submenu.addItem(item("断开 Agent", #selector(disconnectAgent)))
         parent.submenu = submenu
         return parent
