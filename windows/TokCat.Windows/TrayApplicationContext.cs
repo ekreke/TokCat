@@ -237,23 +237,33 @@ public sealed class TrayApplicationContext : ApplicationContext
         { Enabled = false });
         _menu.Items.Add(new ToolStripSeparator());
 
-        _menu.Items.Add(MetricMenu());
-        _menu.Items.Add(SizeMenu());
-        _menu.Items.Add(MaxFpsMenu());
-        _menu.Items.Add(SensitivityMenu());
-        _menu.Items.Add(SourcesMenu());
-
-        _menu.Items.Add(new ToolStripSeparator());
-        _menu.Items.Add(Item("重载模型定价", (_, _) => _cli.Send("reloadPricing")));
-        _menu.Items.Add(Item("重置统计", (_, _) => _cli.Send("reset")));
-
-        _menu.Items.Add(new ToolStripSeparator());
-        var autostart = new ToolStripMenuItem("开机自启") { Checked = Autostart.IsEnabled() };
-        autostart.Click += (_, _) => Autostart.SetEnabled(!Autostart.IsEnabled());
-        _menu.Items.Add(autostart);
+        _menu.Items.Add(SettingsMenu());
 
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(Item("退出 TokCat", (_, _) => ExitApp()));
+    }
+
+    /// <summary>设置子菜单：全部可调项收进二级菜单，顶栏只留 状态行 / 设置 / 退出。</summary>
+    private ToolStripMenuItem SettingsMenu()
+    {
+        var parent = new ToolStripMenuItem("设置");
+
+        parent.DropDownItems.Add(MetricMenu());
+        parent.DropDownItems.Add(SizeMenu());
+        parent.DropDownItems.Add(MaxFpsMenu());
+        parent.DropDownItems.Add(SensitivityMenu());
+        parent.DropDownItems.Add(SourcesMenu());
+
+        parent.DropDownItems.Add(new ToolStripSeparator());
+        parent.DropDownItems.Add(Item("重载模型定价", (_, _) => _cli.Send("reloadPricing")));
+        parent.DropDownItems.Add(Item("重置统计", (_, _) => _cli.Send("reset")));
+
+        parent.DropDownItems.Add(new ToolStripSeparator());
+        var autostart = new ToolStripMenuItem("开机自启") { Checked = Autostart.IsEnabled() };
+        autostart.Click += (_, _) => Autostart.SetEnabled(!Autostart.IsEnabled());
+        parent.DropDownItems.Add(autostart);
+
+        return parent;
     }
 
     private ToolStripMenuItem MetricMenu()
