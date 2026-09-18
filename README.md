@@ -29,16 +29,15 @@ TokCat 跟着 AI 编码 agent 的 token 消耗速率跑动：烧得越猛，跑�
 
 ```bash
 brew tap ekreke/tokcat https://github.com/ekreke/TokCat
-brew trust --cask ekreke/tokcat/tokcat
-brew install --cask tokcat
+brew install --cask ekreke/tokcat/tokcat
 ```
 
-> Homebrew 7 起，非官方 tap 的 cask 需要先 `brew trust` 授权才能加载，且本 tap 使用自定义 remote，必须带 `--cask`。这是首次安装的一次性步骤。
+> Homebrew 6 起非官方 tap 的 cask 需显式信任：**用完整名 `ekreke/tokcat/tokcat` 安装会自动只信任该 cask，无需单独 `brew trust`**。本 tap 使用自定义 remote，`brew tap` 必须带 URL。若你的 Homebrew 仍提示未信任，先执行 `brew trust --cask ekreke/tokcat/tokcat` 再重试。
 
 升级 / 卸载：
 
 ```bash
-brew upgrade --cask tokcat
+brew upgrade --cask ekreke/tokcat/tokcat
 brew uninstall --cask tokcat
 ```
 
