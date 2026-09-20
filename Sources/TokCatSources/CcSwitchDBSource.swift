@@ -11,8 +11,15 @@ public final class CcSwitchDBSource: TokenSource {
     public var isEnabled = false
     public var defaultEnabled: Bool { false }
 
+    /// 需要排除的 `app_type` 集合，由引擎按「其他专门源的启用状态」同步。
+    ///
+    /// cc-switch 的代理日志覆盖的流量与各专门源（opencode/codex/claude/pi…）
+    /// 完全重叠：专门源启用时必须排除对应记录，否则同一批请求被双计，
+    /// 「单秒峰值/合计」等统计会接近翻倍。值为受控的源 id 常量（非用户输入）。
+    public var excludedAppTypes: Set<String> = []
+
     private let path: String
-    private let pollLimit = 2000
+    private static let pollLimit = 2000
     private let startFromNow: Bool
     private var db: SQLiteRO?
     private var cursorSeconds: Int64?
@@ -22,6 +29,22 @@ public final class CcSwitchDBSource: TokenSource {
         self.path = path
         self.startFromNow = startFromNow
         self.db = SQLiteRO(path: path)
+    }
+
+    /// 构造增量查询 SQL；`excluding` 非空时排除对应 `app_type` 的记录。
+    static func makeQuery(excluding: Set<String>) -> String {
+        var sql = """
+            SELECT request_id, model, input_tokens, output_tokens, cache_read_tokens,
+                   cache_creation_tokens, created_at
+            FROM proxy_request_logs
+            WHERE created_at > ?
+            """
+        if !excluding.isEmpty {
+            let list = excluding.sorted().map { "'\($0)'" }.joined(separator: ",")
+            sql += "\nAND app_type NOT IN (\(list))"
+        }
+        sql += "\nORDER BY created_at ASC\nLIMIT \(pollLimit)"
+        return sql
     }
 
     public func poll(now: Date) -> [TokenSample] {
@@ -44,14 +67,7 @@ public final class CcSwitchDBSource: TokenSource {
         var results: [TokenSample] = []
         var newCursor = cursor
         db.query(
-            """
-            SELECT request_id, model, input_tokens, output_tokens, cache_read_tokens,
-                   cache_creation_tokens, created_at
-            FROM proxy_request_logs
-            WHERE created_at > ?
-            ORDER BY created_at ASC
-            LIMIT \(pollLimit)
-            """,
+            Self.makeQuery(excluding: excludedAppTypes),
             bind: [.int(cursor)]
         ) { row in
             let createdAt = row.int(6)

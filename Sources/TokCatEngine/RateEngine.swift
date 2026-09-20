@@ -103,6 +103,14 @@ public final class RateEngine {
         let start = DispatchTime.now()
         let now = Date()
 
+        // cc-switch 聚合源覆盖与专门源相同的流量：专门源启用时排除对应
+        // app_type，避免同一批请求被双计（峰值/合计接近翻倍）。
+        if let ccSwitch = sources.first(where: { $0.id == "cc-switch" }) as? CcSwitchDBSource {
+            ccSwitch.excludedAppTypes = Set(
+                sources.filter { $0.isEnabled && $0.id != "cc-switch" }.map(\.id)
+            )
+        }
+
         var samples: [TokenSample] = []
         for source in sources where source.isEnabled {
             let sourceStart = DispatchTime.now()
