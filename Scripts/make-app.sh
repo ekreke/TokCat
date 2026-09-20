@@ -24,7 +24,9 @@ rm -rf "${APP}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${BIN}" "${APP}/Contents/MacOS/${PRODUCT}"
 
-# SPM 资源包（内置动画素材）需要放进 Contents/Resources，Bundle.module 才能找到
+# SPM 资源包（内置动画素材 + 高亮主题）放进 Contents/Resources。
+# 注意：代码通过 Bundle.tokCatResources 按规范位置查找（见 AppBundle.swift），
+# 不能拷到 .app 根目录——那会让 codesign 报 unsealed contents 而签名失败。
 for bundle in .build/"${CONFIG}"/*.bundle; do
     [ -e "${bundle}" ] || continue
     cp -R "${bundle}" "${APP}/Contents/Resources/"

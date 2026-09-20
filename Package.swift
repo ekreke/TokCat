@@ -46,8 +46,10 @@ targets.append(.systemLibrary(name: "SQLite3", path: "Sources/SQLite3"))
 #endif
 
 #if os(macOS)
+// 注意：语法高亮库 HighlighterSwift（MIT）已 vendor 进 TokCatApp（Sources/TokCatApp/Highlighter），
+// 原因：SwiftPM 6.1 为带资源 target 生成的 Bundle.module accessor 只查 .app 根目录与
+// 构建机绝对路径，app 分发形态下必然找不到资源包而崩溃，见 Sources/TokCatApp/AppBundle.swift。
 dependencies.append(.package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.4.0"))
-dependencies.append(.package(url: "https://github.com/smittytone/HighlighterSwift", from: "3.1.0"))
 products.append(.executable(name: "TokCat", targets: ["TokCatApp"]))
 targets.append(
     .executableTarget(
@@ -58,7 +60,6 @@ targets.append(
             "TokCatAgent",
             "TokCatEngine",
             .product(name: "MarkdownUI", package: "swift-markdown-ui"),
-            .product(name: "Highlighter", package: "HighlighterSwift"),
         ],
         resources: [
             .copy("Resources")

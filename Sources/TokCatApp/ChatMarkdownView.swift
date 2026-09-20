@@ -1,5 +1,4 @@
 import AppKit
-import Highlighter
 import MarkdownUI
 import SwiftUI
 

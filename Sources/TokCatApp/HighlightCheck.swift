@@ -1,5 +1,4 @@
 import Foundation
-import Highlighter
 
 /// 调试用：验证 Highlight.js 资源是否可加载（`TokCat highlightcheck`）。
 enum HighlightCheck {

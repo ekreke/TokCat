@@ -8,8 +8,8 @@ import TokCatEngine
 enum BundledAnimations {
     @discardableResult
     static func register() -> Int {
-        // SPM 资源包在不同形态下 resourceURL 指向不同层级，逐个候选尝试。
-        let bundle = Bundle.module
+        // 不用 Bundle.module，原因见 Bundle.tokCatResources（AppBundle.swift）。
+        let bundle = Bundle.tokCatResources
         var candidates: [URL] = []
         if let resourceURL = bundle.resourceURL {
             candidates.append(resourceURL)
