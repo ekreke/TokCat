@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Debug.enabled {
             Debug.log("动画包: \(AnimationRegistry.shared.allPacks.map(\.displayName).joined(separator: ", ")) (内置素材包 \(bundled) 个)")
         }
+        // 自启自愈会 spawn launchctl / codesign，放后台队列避免阻塞启动。
+        DispatchQueue.global(qos: .utility).async {
+            LoginItemManager.healIfNeeded()
+        }
 
         let pricing = ModelPricingStore.loadDefault()
         var sources = SourceFactory.makeDefault(store: store)

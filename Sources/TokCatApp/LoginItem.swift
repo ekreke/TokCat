@@ -34,6 +34,25 @@ enum LoginItemState: Equatable {
 enum LoginItemManager {
     static let launchAgentLabel = "com.ekreke.tokcat"
 
+    /// 用户期望的自启开关；BTM 记录可能在覆盖安装后失效，启动时以此为准做自愈。
+    private static let desiredKey = "loginItemDesired"
+    private static var desiredEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: desiredKey) }
+        set { UserDefaults.standard.set(newValue, forKey: desiredKey) }
+    }
+
+    /// 应用是否为 ad-hoc 签名（无 Team Identifier）。只探测一次并缓存。
+    ///
+    /// ad-hoc 签名每次覆盖安装 CDHash 都会变化，SMAppService 已注册的 BTM
+    /// 记录会因此失效（升级后自启静默失效的根因），这类构建直接走 LaunchAgent。
+    /// 注意只在 `enable()` 等可 spawn 命令的路径使用，避免破坏 `currentState()`
+    /// 的轻量契约；`static let` 由 Swift 保证线程安全的一次性初始化。
+    private static let adhocSigned: Bool = {
+        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/codesign") else { return false }
+        let result = run("/usr/bin/codesign", ["-dv", Bundle.main.bundlePath])
+        return result.status == 0 && result.output.contains("TeamIdentifier=not set")
+    }()
+
     static var isSupported: Bool {
         Bundle.main.bundlePath.hasSuffix(".app")
     }
@@ -67,10 +86,36 @@ enum LoginItemManager {
     @discardableResult
     static func setEnabled(_ enabled: Bool) -> LoginItemState {
         guard isSupported else { return .unsupported }
-        return enabled ? enable() : disable()
+        let state = enabled ? enable() : disable()
+        // 统一在此维护期望标志：failed / unsupported 不改动原值。
+        switch state {
+        case .enabled, .requiresApproval:
+            desiredEnabled = true
+        case .disabled:
+            desiredEnabled = false
+        case .failed, .unsupported:
+            break
+        }
+        return state
+    }
+
+    // MARK: - 启动自愈
+
+    /// 启动时调用：用户期望开启但当前实际未注册（覆盖安装导致 BTM 记录
+    /// 失效、LaunchAgent 被清理等），自动重新开启。会 spawn 命令，须在后台线程调用。
+    @discardableResult
+    static func healIfNeeded() -> LoginItemState {
+        guard desiredEnabled, case .disabled = currentState() else { return currentState() }
+        NSLog("TokCat: 检测到开机自启期望开启但注册已失效，自动恢复")
+        return setEnabled(true)
     }
 
     private static func enable() -> LoginItemState {
+        if adhocSigned {
+            NSLog("TokCat: ad-hoc 签名，SMAppService 注册会在覆盖安装后失效，直接使用 LaunchAgent")
+            return installLaunchAgentOrFail()
+        }
+
         do {
             try SMAppService.mainApp.register()
         } catch {
