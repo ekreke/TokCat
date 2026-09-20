@@ -16,6 +16,7 @@ enum DumpCommand {
             ClaudeCodeSource(store: store),
             CodexSource(store: store),
             PiSource(store: store),
+            ZCodeSource(store: store),
             HermesSource(startFromNow: false),
             CcSwitchDBSource(startFromNow: false),
         ]

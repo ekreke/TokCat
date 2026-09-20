@@ -10,6 +10,7 @@ public enum SourceFactory {
             ClaudeCodeSource(store: store),
             CodexSource(store: store),
             PiSource(store: store),
+            ZCodeSource(store: store),
             HermesSource(),
             CcSwitchDBSource(),
         ]

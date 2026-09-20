@@ -81,6 +81,64 @@ final class ParserTests: XCTestCase {
         XCTAssertTrue(source.poll(now: Date()).isEmpty)
     }
 
+    // MARK: - ZCode
+
+    func testZCodeParsingSubtractsCacheReadAndTracksModel() throws {
+        let networkStatus = """
+        {"id":"ns-1","sessionId":"sess_1","type":"model_network_status","timestamp":"2026-08-27T05:07:18.355Z","payload":{"baseURL":"https://open.bigmodel.cn/api/anthropic","model":{"providerId":"builtin:bigmodel-coding-plan","modelId":"GLM-5.3","role":"main"}}}
+        """
+        let modelComplete = """
+        {"id":"mc-1","sessionId":"sess_1","type":"model_complete","timestamp":"2026-08-27T05:07:22.638Z","payload":{"content":"","stopReason":"tool-calls","usage":{"inputTokens":5368,"outputTokens":210,"totalTokens":5578,"cacheReadTokens":3136,"cacheWriteTokens":0}}}
+        """
+        try write(networkStatus + "\n" + modelComplete + "\n", to: "sess_1/agent_1/transcript.jsonl")
+
+        let source = ZCodeSource(store: store, root: root)
+        let samples = source.poll(now: Date())
+        let sample = try XCTUnwrap(samples.first)
+        XCTAssertEqual(sample.sourceId, "zcode")
+        XCTAssertEqual(sample.usage.input, 5368 - 3136)
+        XCTAssertEqual(sample.usage.output, 210)
+        XCTAssertEqual(sample.usage.cacheRead, 3136)
+        XCTAssertEqual(sample.usage.cacheWrite, 0)
+        XCTAssertEqual(sample.usage.reasoning, 0)
+        XCTAssertEqual(sample.model, "GLM-5.3")
+        // path 是绝对路径且分隔符随平台不同，只断言事件 id 部分
+        XCTAssertTrue(sample.id.hasSuffix("#mc-1"))
+    }
+
+    func testZCodeHandlesReasoningTokensVariant() throws {
+        // 真实日志中约 5% 的事件 usage 无 cacheWriteTokens、带 reasoningTokens
+        let line = """
+        {"id":"mc-3","sessionId":"sess_1","type":"model_complete","timestamp":"2026-08-27T05:07:22.638Z","payload":{"content":"","stopReason":"end_turn","usage":{"inputTokens":9000,"outputTokens":1500,"cacheReadTokens":3000,"reasoningTokens":1200,"totalTokens":10500}}}
+        """
+        try write(line + "\n", to: "a.jsonl")
+        let source = ZCodeSource(store: store, root: root)
+        let sample = try XCTUnwrap(source.poll(now: Date()).first)
+        XCTAssertEqual(sample.usage.input, 9000 - 3000)
+        XCTAssertEqual(sample.usage.output, 1500)
+        XCTAssertEqual(sample.usage.cacheRead, 3000)
+        // reasoning 是 output 子集，不重复累计
+        XCTAssertEqual(sample.usage.reasoning, 0)
+    }
+
+    func testZCodeIgnoresNonCompleteEvents() throws {
+        let streaming = """
+        {"id":"ms-1","sessionId":"sess_1","type":"model_streaming","timestamp":"2026-08-27T05:07:20.595Z","payload":{"delta":"hi"}}
+        """
+        try write(streaming + "\n", to: "sess_1/agent_1/transcript.jsonl")
+        let source = ZCodeSource(store: store, root: root)
+        XCTAssertTrue(source.poll(now: Date()).isEmpty)
+    }
+
+    func testZCodeSkipsEmptyUsage() throws {
+        let line = """
+        {"id":"mc-2","sessionId":"sess_1","type":"model_complete","timestamp":"2026-08-27T05:07:22.638Z","payload":{"content":"","stopReason":"end_turn","usage":{"inputTokens":0,"outputTokens":0,"totalTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0}}}
+        """
+        try write(line + "\n", to: "a.jsonl")
+        let source = ZCodeSource(store: store, root: root)
+        XCTAssertTrue(source.poll(now: Date()).isEmpty)
+    }
+
     // MARK: - pi
 
     func testPiParsing() throws {

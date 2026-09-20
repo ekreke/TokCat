@@ -18,13 +18,13 @@ TokCat 跟着 AI 编码 agent 的 token 消耗速率跑动：烧得越猛，跑�
 - 🏃 **速率动画** —— token/s 越高跑越快，空闲时以 2fps 慢走。内置 RunCat 精灵图，也支持自定义动画包。
 - 💬 **左键 Chat** —— 常驻本地 agent 会话，流式回答、多轮追问，Markdown 渲染 + 代码高亮。
 - 📊 **右键趋势** —— 菜单顶部内嵌最近 5 分钟折线，最近 1 秒、合计、单秒峰值一目了然。
-- 🔌 **多源采集** —— opencode、Claude Code、Codex、pi、Hermes，以及可选的 cc-switch 聚合库。
+- 🔌 **多源采集** —— opencode、Claude Code、Codex、pi、ZCode、Hermes，以及可选的 cc-switch 聚合库。
 
 ## 它听得懂这些工具
 
 从本地日志与数据库里算出你真实的 token 消耗速率，不上传任何数据。
 
-`opencode` · `Claude Code` · `Codex` · `pi` · `Hermes` · `cc-switch`
+`opencode` · `Claude Code` · `Codex` · `pi` · `ZCode` · `Hermes` · `cc-switch`
 
 ## 安装
 
