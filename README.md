@@ -1,7 +1,10 @@
 # TokCat
 
 <p align="center">
-  <img src="docs/assets/cat_0.png" alt="TokCat" width="120" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cat_0_light.png" />
+    <img src="docs/assets/cat_0.png" alt="TokCat" width="120" />
+  </picture>
 </p>
 
 **你家菜单栏，该住一只跑得飞快的猫了。**
