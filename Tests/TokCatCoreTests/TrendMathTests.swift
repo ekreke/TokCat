@@ -29,11 +29,13 @@ final class TrendMathTests: XCTestCase {
 
     func testNiceMax() {
         XCTAssertEqual(TrendMath.niceMax(0), 1)
-        XCTAssertEqual(TrendMath.niceMax(0.4), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(TrendMath.niceMax(0.4), 0.4, accuracy: 0.0001)
         XCTAssertEqual(TrendMath.niceMax(1), 1)
-        XCTAssertEqual(TrendMath.niceMax(1.5), 2)
-        XCTAssertEqual(TrendMath.niceMax(3), 5)
-        XCTAssertEqual(TrendMath.niceMax(7), 10)
-        XCTAssertEqual(TrendMath.niceMax(230), 500)
+        XCTAssertEqual(TrendMath.niceMax(1.5), 1.5, accuracy: 0.0001)
+        XCTAssertEqual(TrendMath.niceMax(3), 3, accuracy: 0.0001)
+        XCTAssertEqual(TrendMath.niceMax(7), 8, accuracy: 0.0001)
+        XCTAssertEqual(TrendMath.niceMax(230), 250, accuracy: 0.0001)
+        // 回归：单秒峰值 1.17M 曾被 1/2/5 阶梯放大到 2M，压缩曲线可读高度。
+        XCTAssertEqual(TrendMath.niceMax(1_170_000), 1_200_000, accuracy: 0.0001)
     }
 }

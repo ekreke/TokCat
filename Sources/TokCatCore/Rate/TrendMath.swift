@@ -18,18 +18,14 @@ public enum TrendMath {
         return result
     }
 
-    /// 把上限取整到 1 / 2 / 5 × 10^k，让 Y 轴刻度稳定好看。
+    /// 把上限取整到 1 / 1.2 / 1.5 / 2 / 2.5 / 3 / 4 / 5 / 6 / 8 / 10 × 10^k，让 Y 轴刻度稳定好看。
+    /// 阶梯较密（相比 1/2/5），避免峰值后余量过大把曲线压成低水位。
     public static func niceMax(_ value: Double) -> Double {
         guard value > 0 else { return 1 }
         let exponent = floor(log10(value))
         let base = value / pow(10, exponent)
-        let nice: Double
-        switch base {
-        case ...1: nice = 1
-        case ...2: nice = 2
-        case ...5: nice = 5
-        default: nice = 10
-        }
+        let steps: [Double] = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+        let nice = steps.first { base <= $0 } ?? 10
         return nice * pow(10, exponent)
     }
 }

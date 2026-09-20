@@ -129,8 +129,10 @@ final class TrendModel {
 
         result.sort { $0.subtotal > $1.subtotal }
         data.series = Array(result.prefix(maxLegendSeries))
+        // Y 轴上限跟随实际画出的平滑折线（×1.1 防过冲裁剪），而非原始单秒峰值；
+        // 否则平滑抹掉尖峰后，曲线永远够不到顶部，变化看不清。
         let linePeak = data.series.flatMap { $0.points.map(\.value) }.max() ?? 0
-        data.yMax = TrendMath.niceMax(max(linePeak, data.peak))
+        data.yMax = TrendMath.niceMax(linePeak * 1.1)
         return data
     }
 }
