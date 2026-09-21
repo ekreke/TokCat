@@ -52,7 +52,8 @@ final class TrendModel {
     /// 图例最多展示的客户端数，保证菜单高度稳定。
     private let maxLegendSeries = 4
     /// 折线平滑窗口（秒）。仅影响显示，`合计/峰值` 仍用原始值。
-    private let smoothingSeconds = 15
+    /// 窗口过大（如 15s）会把瞬时尖峰压低一个数量级，与卡片上的峰值数字割裂。
+    private let smoothingSeconds = 5
 
     /// 立即更新口径名称（菜单下次打开时生效）。
     func setMetricName(_ name: String) {
@@ -129,10 +130,10 @@ final class TrendModel {
 
         result.sort { $0.subtotal > $1.subtotal }
         data.series = Array(result.prefix(maxLegendSeries))
-        // Y 轴上限跟随实际画出的平滑折线（×1.1 防过冲裁剪），而非原始单秒峰值；
-        // 否则平滑抹掉尖峰后，曲线永远够不到顶部，变化看不清。
+        // Y 轴上限与卡片上的「单秒峰值」同口径：取「原始每秒峰值」与「画出的平滑折线峰值」
+        // 的较大者——既保证曲线不被裁剪（≥ 折线峰值），又让刻度范围与峰值数字一致（≥ 原始峰值）。
         let linePeak = data.series.flatMap { $0.points.map(\.value) }.max() ?? 0
-        data.yMax = TrendMath.niceMax(linePeak * 1.1)
+        data.yMax = TrendMath.niceMax(max(linePeak, data.peak) * 1.1)
         return data
     }
 }
