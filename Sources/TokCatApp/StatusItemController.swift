@@ -23,6 +23,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var trendChartHosting: NSHostingView<TrendChartView>?
     private lazy var trendChartItem = makeTrendChartItem()
+    private var isTrendMenuOpen = false
+    private var trendYMax: Double?
     private var localHermesPath: String?
 
     private var frameTimer: Timer?
@@ -62,6 +64,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.currentRate = snapshot.rate
             self.snapshot = snapshot
             self.trendModel.update(from: snapshot, metricName: self.settings.metricKind.displayName)
+            if self.isTrendMenuOpen {
+                self.refreshTrendChart()
+            }
         }
     }
 
@@ -183,8 +188,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        guard menu === self.menu else { return }
+        isTrendMenuOpen = true
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        guard menu === self.menu else { return }
+        isTrendMenuOpen = false
+        trendYMax = nil
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        trendYMax = nil
 
         // 后台刷新 Agent 检测缓存（安装后菜单能反映最新状态），菜单本身读缓存不阻塞。
         refreshHermesStatusInBackground()
@@ -232,10 +249,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// 取一份当前快照刷新图表（菜单打开时调用一次，打开期间不再重绘）。
+    /// 菜单打开期间随引擎快照刷新；Y 轴只扩不缩，避免每秒重算刻度造成抖动。
     private func refreshTrendChart() {
         guard let hosting = trendChartHosting else { return }
-        hosting.rootView = TrendChartView(data: trendModel.chartData())
+        var data = trendModel.chartData()
+        if let trendYMax {
+            data.yMax = max(trendYMax, data.yMax)
+        }
+        trendYMax = data.yMax
+        hosting.rootView = TrendChartView(data: data)
         hosting.layoutSubtreeIfNeeded()
         let fitting = hosting.fittingSize
         let height = fitting.height > 60 ? fitting.height : 200
@@ -380,10 +402,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         for source in sources {
             let count = snapshot?.eventCounts[source.id] ?? 0
             let title = count > 0 ? "\(source.displayName)  (\(count))" : source.displayName
-            let item = NSMenuItem(title: title, action: #selector(toggleSource(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: title, action: #selector(selectSource(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = source.id
-            item.state = source.isEnabled ? .on : .off
+            item.state = source.id == settings.selectedSourceID ? .on : .off
             submenu.addItem(item)
         }
         parent.submenu = submenu
@@ -449,12 +471,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings.maxFPS = value
     }
 
-    @objc private func toggleSource(_ sender: NSMenuItem) {
+    @objc private func selectSource(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String,
-              let source = sources.first(where: { $0.id == id }) else { return }
-        let newValue = !source.isEnabled
-        source.isEnabled = newValue
-        settings.setEnabled(newValue, for: source)
+              sources.contains(where: { $0.id == id }) else { return }
+        settings.selectedSourceID = id
+        settings.apply(to: sources)
+        engine.resetTotals()
     }
 
     @objc private func reloadAnimations() {

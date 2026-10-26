@@ -56,6 +56,7 @@ open class JSONLTokenSource: TokenSource {
 public enum AgentPaths {
     public static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
     public static var claudeProjects: URL { home.appendingPathComponent(".claude/projects") }
+    public static var kimiCodeSessions: URL { home.appendingPathComponent(".kimi-code/sessions") }
     public static var codexSessions: URL { home.appendingPathComponent(".codex/sessions") }
     public static var piSessions: URL { home.appendingPathComponent(".pi/agent/sessions") }
     public static var zcodeAgents: URL { home.appendingPathComponent(".zcode/cli/agents") }

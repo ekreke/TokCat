@@ -50,7 +50,7 @@ final class AppSettings {
         static let metric = "metricKind"
         static let sensitivity = "sensitivity"
         static let saturationRate = "saturationRate"
-        static let sourceOverrides = "sourceOverrides"
+        static let selectedSource = "selectedSourceID"
         static let iconSize = "iconSize"
         static let maxFPS = "maxFPS"
         static let hermesMode = "hermesMode"
@@ -196,27 +196,17 @@ final class AppSettings {
         set { defaults.set(newValue, forKey: Key.chatHeight) }
     }
 
-    // MARK: - 采集源开关
+    // MARK: - 采集源选择
 
-    private var sourceOverrides: [String: Bool] {
-        get { defaults.dictionary(forKey: Key.sourceOverrides) as? [String: Bool] ?? [:] }
-        set { defaults.set(newValue, forKey: Key.sourceOverrides) }
+    var selectedSourceID: String {
+        get { defaults.string(forKey: Key.selectedSource) ?? "opencode" }
+        set { defaults.set(newValue, forKey: Key.selectedSource) }
     }
 
-    func isEnabled(_ source: TokenSource) -> Bool {
-        sourceOverrides[source.id] ?? source.defaultEnabled
-    }
-
-    func setEnabled(_ enabled: Bool, for source: TokenSource) {
-        var overrides = sourceOverrides
-        overrides[source.id] = enabled
-        sourceOverrides = overrides
-    }
-
-    /// 把偏好应用到采集源实例。
+    /// 把单选偏好应用到采集源实例。
     func apply(to sources: [TokenSource]) {
         for source in sources {
-            source.isEnabled = isEnabled(source)
+            source.isEnabled = source.id == selectedSourceID
         }
     }
 }

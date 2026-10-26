@@ -22,6 +22,52 @@ final class ParserTests: XCTestCase {
         try contents.data(using: .utf8)!.write(to: url)
     }
 
+    // MARK: - Kimi Code
+
+    func testKimiCodeParsing() throws {
+        let usage = """
+        {"type":"usage.record","agentId":"main","model":"kimi-code/k3.1-pro","usage":{"inputOther":2165,"output":317,"inputCacheRead":19200,"inputCacheCreation":25},"usageScope":"turn","time":1792984533868}
+        """
+        let stepEnd = """
+        {"type":"context.append_loop_event","agentId":"main","event":{"type":"step.end","usage":{"inputOther":2165,"output":317,"inputCacheRead":19200,"inputCacheCreation":25}},"time":1792984533966}
+        """
+        try write(usage + "\n" + stepEnd + "\n", to: "wd_project/session_1/agents/main/wire.jsonl")
+
+        let source = KimiCodeSource(store: store, root: root)
+        let samples = source.poll(now: Date())
+        XCTAssertEqual(samples.count, 1)
+        let sample = try XCTUnwrap(samples.first)
+        XCTAssertEqual(sample.sourceId, "kimi")
+        XCTAssertEqual(sample.usage.input, 2165)
+        XCTAssertEqual(sample.usage.output, 317)
+        XCTAssertEqual(sample.usage.cacheRead, 19200)
+        XCTAssertEqual(sample.usage.cacheWrite, 25)
+        XCTAssertEqual(sample.model, "kimi-code/k3.1-pro")
+        XCTAssertEqual(sample.at.timeIntervalSince1970, 1_792_984_533.868, accuracy: 0.001)
+    }
+
+    func testKimiCodeIgnoresNonUsageAndEmptyUsage() throws {
+        let request = """
+        {"type":"llm.request","agentId":"main","model":"k3.1-pro","time":1792984519420}
+        """
+        let empty = """
+        {"type":"usage.record","agentId":"main","usage":{"inputOther":0,"output":0,"inputCacheRead":0,"inputCacheCreation":0},"time":1792984533868}
+        """
+        try write(request + "\n" + empty + "\n", to: "session_1/agents/main/wire.jsonl")
+        let source = KimiCodeSource(store: store, root: root)
+        XCTAssertTrue(source.poll(now: Date()).isEmpty)
+    }
+
+    func testKimiCodeDeduplicatesRepeatedUsageRecord() throws {
+        let line = """
+        {"type":"usage.record","agentId":"main","model":"kimi-code/k3.1-pro","usage":{"inputOther":10,"output":5,"inputCacheRead":20,"inputCacheCreation":0},"time":1792984533868}
+        """
+        try write(line + "\n" + line + "\n", to: "session_1/agents/main/wire.jsonl")
+        let source = KimiCodeSource(store: store, root: root)
+        XCTAssertEqual(source.poll(now: Date()).count, 1)
+        XCTAssertTrue(source.poll(now: Date()).isEmpty)
+    }
+
     // MARK: - Claude
 
     func testClaudeParsing() throws {
