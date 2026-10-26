@@ -12,7 +12,7 @@ import TokCatEngine
 ///   TokCatCli version   打印版本
 ///
 /// `serve` 协议（每行一个 JSON）：
-///   命令：{"id":1,"cmd":"start|stop|metric|source|reloadPricing|reset|sources|quit","params":{...}}
+///   命令：{"id":1,"cmd":"start|stop|metric|selectSource|reloadPricing|reset|sources|quit","params":{...}}
 ///   响应：{"id":1,"ok":true}
 ///   事件：{"event":"ready"|"snapshot"|"error", ...}
 
@@ -44,6 +44,9 @@ final class ServeSession {
         self.pricing = ModelPricingStore.loadDefault()
         self.metricID = metric
         let sources = SourceFactory.makeDefault(store: store)
+        for source in sources {
+            source.isEnabled = source.id == "opencode"
+        }
         self.engine = RateEngine(
             sources: sources,
             converter: ServeSession.makeConverter(metric: metric, pricing: pricing),
@@ -62,8 +65,12 @@ final class ServeSession {
         engine.updateConverter(ServeSession.makeConverter(metric: id, pricing: pricing))
     }
 
-    func setSource(id: String, enabled: Bool) {
-        engine.allSources.first { $0.id == id }?.isEnabled = enabled
+    func selectSource(id: String) {
+        guard engine.allSources.contains(where: { $0.id == id }) else { return }
+        for source in engine.allSources {
+            source.isEnabled = source.id == id
+        }
+        engine.resetTotals()
     }
 
     func reloadPricing() {
@@ -141,8 +148,8 @@ func handleCommand(_ line: String, session: ServeSession, bridge: AgentBridge) {
         session.stop(); emitOK(id)
     case "metric":
         session.setMetric(params["metric"] as? String ?? "weighted"); emitOK(id)
-    case "source":
-        session.setSource(id: params["id"] as? String ?? "", enabled: (params["enabled"] as? Bool) ?? true); emitOK(id)
+    case "selectSource":
+        session.selectSource(id: params["id"] as? String ?? ""); emitOK(id)
     case "reloadPricing":
         session.reloadPricing(); emitOK(id)
     case "reset":
@@ -182,6 +189,7 @@ func runDump() {
 
     let sources: [TokenSource] = [
         OpenCodeSource(startFromNow: false),
+        KimiCodeSource(store: store),
         ClaudeCodeSource(store: store),
         CodexSource(store: store),
         PiSource(store: store),

@@ -27,7 +27,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly ContextMenuStrip _menu;
     private readonly System.Windows.Forms.Timer _frameTimer;
     private readonly System.Windows.Forms.Timer _snapshotTimer;
-    private readonly HashSet<string> _appliedOverrides = new();
+    private bool _sourceSelectionSynced;
 
     private ChatForm? _chatForm;
     private readonly Control _marshal = new Control();
@@ -89,15 +89,11 @@ public sealed class TrayApplicationContext : ApplicationContext
             Render();
         }
 
-        // 首次拿到来源列表后，把本地保存的开关同步给 CLI。
-        foreach (var source in latest.Sources)
+        // 首次拿到来源列表后，把本地保存的单选项同步给 CLI。
+        if (latest.Sources.Count > 0 && !_sourceSelectionSynced)
         {
-            if (_appliedOverrides.Contains(source.Id)) continue;
-            _appliedOverrides.Add(source.Id);
-            if (_settings.SourceOverrides.TryGetValue(source.Id, out var enabled))
-            {
-                _cli.Send("source", new { id = source.Id, enabled });
-            }
+            _sourceSelectionSynced = true;
+            _cli.Send("selectSource", new { id = _settings.SelectedSourceID });
         }
     }
 
@@ -343,12 +339,12 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         foreach (var source in _snapshot.Sources)
         {
-            var item = new ToolStripMenuItem(source.Name) { Checked = source.Enabled };
+            var item = new ToolStripMenuItem(source.Name) { Checked = source.Id == _settings.SelectedSourceID };
             item.Click += (_, _) =>
             {
-                var enabled = !source.Enabled;
-                _settings.SetEnabled(source.Id, enabled);
-                _cli.Send("source", new { id = source.Id, enabled });
+                _settings.SelectedSourceID = source.Id;
+                _settings.Save();
+                _cli.Send("selectSource", new { id = source.Id });
             };
             parent.DropDownItems.Add(item);
         }

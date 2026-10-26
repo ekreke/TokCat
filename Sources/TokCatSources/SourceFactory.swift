@@ -7,6 +7,7 @@ public enum SourceFactory {
     public static func makeDefault(store: SourceStateStore = SourceStateStore()) -> [TokenSource] {
         [
             OpenCodeSource(),
+            KimiCodeSource(store: store),
             ClaudeCodeSource(store: store),
             CodexSource(store: store),
             PiSource(store: store),

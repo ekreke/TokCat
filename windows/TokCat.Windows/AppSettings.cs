@@ -15,7 +15,7 @@ public sealed class AppSettings
     /// agent 工作目录（Chat 的 cwd）。
     public string AgentWorkingDirectory { get; set; } =
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-    public Dictionary<string, bool> SourceOverrides { get; set; } = new();
+    public string SelectedSourceID { get; set; } = "opencode";
 
     [JsonIgnore]
     public static string Directory => Path.Combine(
@@ -57,12 +57,4 @@ public sealed class AppSettings
         }
     }
 
-    public bool IsEnabled(string sourceId, bool defaultEnabled)
-        => SourceOverrides.TryGetValue(sourceId, out var v) ? v : defaultEnabled;
-
-    public void SetEnabled(string sourceId, bool enabled)
-    {
-        SourceOverrides[sourceId] = enabled;
-        Save();
-    }
 }

@@ -12,7 +12,7 @@ struct TrendPoint: Identifiable, Equatable {
 
 /// 菜单内嵌图表的一份**不可变快照**。
 ///
-/// 打开菜单时生成一次，菜单打开期间不再实时重绘，避免每秒重算坐标域导致的抖动。
+/// 菜单打开期间随引擎快照更新，Y 轴范围由控制器保持稳定。
 struct TrendChartData: Equatable {
     struct Series: Identifiable, Equatable {
         let id: String
@@ -39,7 +39,7 @@ struct TrendChartData: Equatable {
 
 /// 把 `RateEngine` 快照转成图表数据的视图模型。
 ///
-/// 不做实时发布：菜单打开时调用 `chartData()` 取一次快照即可。
+/// 控制器在菜单打开期间每秒调用 `chartData()` 取得最新快照。
 final class TrendModel {
     private var trend: RateHistory.RateTrend?
     private var sourceNames: [String: String] = [:]
@@ -51,9 +51,6 @@ final class TrendModel {
     private let chartPointBudget = 120
     /// 图例最多展示的客户端数，保证菜单高度稳定。
     private let maxLegendSeries = 4
-    /// 折线平滑窗口（秒）。仅影响显示，`合计/峰值` 仍用原始值。
-    /// 窗口过大（如 15s）会把瞬时尖峰压低一个数量级，与卡片上的峰值数字割裂。
-    private let smoothingSeconds = 5
 
     /// 立即更新口径名称（菜单下次打开时生效）。
     func setMetricName(_ name: String) {
@@ -85,13 +82,7 @@ final class TrendModel {
         data.total = windowed.reduce(0, +)
         data.peak = windowed.max() ?? 0
 
-        // 最近 1 秒：取最近一个**完整**秒（倒数第二个桶），避免显示进行中的半截秒。
-        let completedIndex = max(startIndex, count - 2)
-        if completedIndex < count {
-            data.rate = trend.total[completedIndex]
-        }
-
-        // 降采样：把相邻若干秒合成一个点。
+        // 按绝对秒数固定分组边界，窗口滑动时历史点不会重新分组。
         let step = max(1, Int((Double(rangeSeconds) / Double(chartPointBudget)).rounded()))
 
         var result: [TrendChartData.Series] = []
@@ -104,20 +95,21 @@ final class TrendModel {
             var points: [TrendPoint] = []
             var index = 0
             while index < slice.count {
-                let end = min(index + step, slice.count)
-                let span = max(1, end - index)
-                let sum = slice[index..<end].reduce(0, +)
+                let second = Int(trend.timestamps[startIndex + index].timeIntervalSince1970)
+                let bucket = second / step
+                var end = index + 1
+                while end < slice.count {
+                    let nextSecond = Int(trend.timestamps[startIndex + end].timeIntervalSince1970)
+                    if nextSecond / step != bucket { break }
+                    end += 1
+                }
+                let peakIndex = (index..<end).max(by: { slice[$0] < slice[$1] }) ?? index
                 points.append(TrendPoint(
-                    date: trend.timestamps[startIndex + end - 1],
-                    value: sum / Double(span)
+                    date: trend.timestamps[startIndex + peakIndex],
+                    value: slice[peakIndex]
                 ))
                 index = end
             }
-
-            // 对显示值做居中滑动平均，抹平突发流量的尖刺（统计不受影响）。
-            let window = max(1, Int((Double(smoothingSeconds) / Double(step)).rounded()))
-            let smoothed = TrendMath.movingAverage(points.map(\.value), window: window)
-            points = zip(points, smoothed).map { TrendPoint(date: $0.date, value: $1) }
 
             result.append(TrendChartData.Series(
                 id: sourceId,
@@ -130,8 +122,8 @@ final class TrendModel {
 
         result.sort { $0.subtotal > $1.subtotal }
         data.series = Array(result.prefix(maxLegendSeries))
-        // Y 轴上限与卡片上的「单秒峰值」同口径：取「原始每秒峰值」与「画出的平滑折线峰值」
-        // 的较大者——既保证曲线不被裁剪（≥ 折线峰值），又让刻度范围与峰值数字一致（≥ 原始峰值）。
+        // Y 轴上限与卡片上的「单秒峰值」同口径：取原始峰值与折线峰值的较大者，
+        // 既保证曲线不被裁剪，也让刻度范围与峰值数字一致。
         let linePeak = data.series.flatMap { $0.points.map(\.value) }.max() ?? 0
         data.yMax = TrendMath.niceMax(max(linePeak, data.peak) * 1.1)
         return data
@@ -169,7 +161,7 @@ struct TrendChartView: View {
 
     private var stats: some View {
         HStack(spacing: 16) {
-            stat("最近 1 秒", Formatting.rate(data.rate, currency: data.currency))
+            stat("当前速率", Formatting.rate(data.rate, currency: data.currency))
             stat("合计", Formatting.units(data.total, currency: data.currency))
             stat("单秒峰值", Formatting.rate(data.peak, currency: data.currency))
             Spacer(minLength: 0)
